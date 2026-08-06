@@ -74,6 +74,7 @@ This first version seeds the project direction and documentation only. It does n
 The initial docs focus on:
 
 - [Methodology](docs/methodology.md): how claims, evidence chains, probes, and mock-boundary checks fit together.
+- [Evaluation Design](docs/evaluation-design.md): how future cases, baselines, findings, and expected outputs should be organized.
 - [Roadmap](docs/roadmap.md): the intended MVP boundary and staged evolution.
 
 ## Later Direction

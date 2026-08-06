@@ -8,6 +8,7 @@ This repository currently contains the initial documentation only:
 
 - Project positioning and workflow in `README.md`.
 - Evaluation methodology in `docs/methodology.md`.
+- Evaluation design for future cases, baselines, findings, and outputs in `docs/evaluation-design.md`.
 - MVP boundary and staged roadmap in this document.
 
 There is no runner, CLI, benchmark case set, baseline comparison, or finding schema implementation yet.
@@ -47,7 +48,7 @@ The MVP should avoid:
 
 ### Stage 1: Curated Cases
 
-Add a small set of intentionally simple Python/pytest examples. Each case should have a PR-like diff, an issue claim, test evidence, and expected findings such as `Weak Assertion`, `Mocked Core Path`, or `Evidence Complete`.
+Add a small set of intentionally simple Python/pytest examples. Each case should follow the evaluation design in `docs/evaluation-design.md` and include a PR-like diff, an issue claim, test evidence, and expected findings such as `Weak Assertion`, `Mocked Core Path`, or `Evidence Complete`.
 
 ### Stage 2: Runner Skeleton
 
