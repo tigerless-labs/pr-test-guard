@@ -1,0 +1,18 @@
+{
+  "case_id": "weak_assertion_001",
+  "claims": [
+    {
+      "claim_id": "C1",
+      "adequacy": "weak",
+      "findings": [
+        {
+          "type": "Weak Assertion",
+          "evidence_refs": [
+            "repo/tests/test_auth.py::test_empty_password"
+          ],
+          "rationale": "The added test invokes the empty-password path but only checks that a response exists; it never constrains the required HTTP 400 outcome."
+        }
+      ]
+    }
+  ]
+}

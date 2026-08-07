@@ -67,16 +67,61 @@ SWE-bench-style evaluations ask whether an agent can solve an issue. Patch cover
 5. **Inspect mock boundaries** to identify tests that skip the core behavior.
 6. **Report findings** in a form a human reviewer can audit and challenge.
 
-## First-Version Scope
+## Curated Benchmark Foundation
 
-This first version seeds the project direction and documentation only. It does not add implementation code, a CLI, a runner, curated benchmark cases, or baseline comparisons.
+The repository now includes the first executable Python/pytest micro-PR cases under `cases/python/`.
 
-The initial docs focus on:
+The initial cases intentionally isolate four evidence patterns:
+
+- `weak_assertion_001`
+- `issue_test_mismatch_001`
+- `mocked_core_path_001`
+- `evidence_complete_001`
+
+Each case includes an issue, structured claim, executable repository fixture, PR-like patch, metadata, and expected findings defined independently from Claim Harness output.
+
+The benchmark foundation is intentionally small. Its purpose is to stabilize the case contract and ground-truth rules before implementing the full runner or automated semantic analysis.
+
+Validate the case structure:
+
+```bash
+python3 scripts/validate_cases.py
+```
+
+Apply each patch in a temporary copy and run the patched pytest fixture:
+
+```bash
+python3 scripts/validate_cases.py --run
+```
+
+The `--run` mode requires `git` and `pytest` in the local environment.
+
+## Project Documents
 
 - [Methodology](docs/methodology.md): how claims, evidence chains, probes, and mock-boundary checks fit together.
-- [Evaluation Design](docs/evaluation-design.md): how future cases, baselines, findings, and expected outputs should be organized.
-- [Roadmap](docs/roadmap.md): the intended MVP boundary and staged evolution.
+- [Evaluation Design](docs/evaluation-design.md): how cases, baselines, findings, and expected outputs are organized.
+- [Annotation Guidelines](docs/annotation-guidelines.md): how human ground truth should be created without using Claim Harness output.
+- [Benchmark Protocol](docs/benchmark-protocol.md): how coverage, heuristic, LLM, and Claim Harness methods should be compared.
+- [Roadmap](docs/roadmap.md): the MVP boundary and staged evolution.
+
+## Current Scope
+
+This repository now contains documentation plus the first executable benchmark fixtures and a lightweight case validator.
+
+It still does **not** include:
+
+- the Claim Harness runner;
+- automated claim extraction;
+- per-test coverage mapping;
+- automated LLM semantic reasoning;
+- automated mock-boundary classification;
+- counterfactual generation;
+- GitHub Action integration.
+
+The next implementation stage is a lightweight runner that can execute tests, collect coverage, and preserve raw evidence for later claim-centered analysis.
 
 ## Later Direction
 
-Future work can add a small curated Python/pytest case set, a reproducible runner skeleton, expected finding formats, baseline comparisons, counterfactual probes, and mock boundary analysis. The goal is to make evidence adequacy review repeatable without pretending that any automated harness can prove a PR correct.
+Future work can add the runner, stable finding schemas, baseline implementations, per-test coverage, semantic claim alignment, mock-boundary analysis, controlled counterfactual probes, and real-world agentic PR evaluation.
+
+The goal is to make evidence-adequacy review repeatable without pretending that any automated harness can prove a PR correct.

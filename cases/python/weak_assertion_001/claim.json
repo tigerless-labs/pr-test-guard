@@ -1,0 +1,11 @@
+{
+  "claims": [
+    {
+      "id": "C1",
+      "text": "Creating a user with an empty password returns HTTP 400.",
+      "trigger": "password is empty",
+      "expected_outcome": "HTTP status 400",
+      "source": "issue.md"
+    }
+  ]
+}

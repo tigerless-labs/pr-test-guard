@@ -1,0 +1,11 @@
+{
+  "claims": [
+    {
+      "id": "C1",
+      "text": "Logging in with an expired token returns HTTP 401.",
+      "trigger": "token is expired",
+      "expected_outcome": "HTTP status 401",
+      "source": "issue.md"
+    }
+  ]
+}

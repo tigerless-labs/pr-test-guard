@@ -1,0 +1,21 @@
+diff --git a/auth.py b/auth.py
+--- a/auth.py
++++ b/auth.py
+@@ -7,4 +7,6 @@
+ 
+ 
+ def login(token: Token) -> int:
++    if token.expired:
++        return 401
+     return 200
+diff --git a/tests/test_auth.py b/tests/test_auth.py
+--- a/tests/test_auth.py
++++ b/tests/test_auth.py
+@@ -3,3 +3,7 @@
+ 
+ def test_valid_token():
+     assert login(Token(expired=False)) == 200
++
++
++def test_valid_token_still_succeeds():
++    assert login(Token(expired=False)) == 200

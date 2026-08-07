@@ -1,0 +1,11 @@
+{
+  "claims": [
+    {
+      "id": "C1",
+      "text": "Payment retry logic stops after three attempts when the gateway keeps failing.",
+      "trigger": "gateway keeps failing",
+      "expected_outcome": "no more than three retry attempts",
+      "source": "issue.md"
+    }
+  ]
+}

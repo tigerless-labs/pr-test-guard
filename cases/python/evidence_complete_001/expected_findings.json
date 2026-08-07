@@ -1,0 +1,31 @@
+{
+  "case_id": "evidence_complete_001",
+  "claims": [
+    {
+      "claim_id": "C1",
+      "adequacy": "supported",
+      "findings": [
+        {
+          "type": "Evidence Complete",
+          "evidence_refs": [
+            "repo/tests/test_users.py::test_empty_password_is_rejected"
+          ],
+          "rationale": "The test directly asserts the HTTP 400 outcome required by the claim."
+        }
+      ]
+    },
+    {
+      "claim_id": "C2",
+      "adequacy": "supported",
+      "findings": [
+        {
+          "type": "Evidence Complete",
+          "evidence_refs": [
+            "repo/tests/test_users.py::test_empty_password_is_rejected"
+          ],
+          "rationale": "The same test directly asserts that no user was persisted for the rejected request."
+        }
+      ]
+    }
+  ]
+}

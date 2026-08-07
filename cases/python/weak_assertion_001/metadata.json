@@ -1,0 +1,8 @@
+{
+  "language": "python",
+  "test_framework": "pytest",
+  "fixture_kind": "executable_micro_pr",
+  "ground_truth_source": "controlled_construction",
+  "case_id": "weak_assertion_001",
+  "case_family": "Weak Assertion"
+}

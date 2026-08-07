@@ -1,0 +1,8 @@
+{
+  "language": "python",
+  "test_framework": "pytest",
+  "fixture_kind": "executable_micro_pr",
+  "ground_truth_source": "controlled_construction",
+  "case_id": "mocked_core_path_001",
+  "case_family": "Mocked Core Path"
+}
