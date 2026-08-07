@@ -1,0 +1,22 @@
+diff --git a/auth.py b/auth.py
+--- a/auth.py
++++ b/auth.py
+@@ -7,4 +7,6 @@
+ 
+ 
+ def create_user(password: str) -> Response:
++    if not password:
++        return Response(status_code=400)
+     return Response(status_code=201)
+diff --git a/tests/test_auth.py b/tests/test_auth.py
+--- a/tests/test_auth.py
++++ b/tests/test_auth.py
+@@ -4,3 +4,8 @@
+ def test_valid_password_creates_user():
+     response = create_user("secret")
+     assert response.status_code == 201
++
++
++def test_empty_password():
++    response = create_user("")
++    assert response is not None

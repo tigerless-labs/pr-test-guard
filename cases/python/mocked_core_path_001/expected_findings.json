@@ -1,0 +1,18 @@
+{
+  "case_id": "mocked_core_path_001",
+  "claims": [
+    {
+      "claim_id": "C1",
+      "adequacy": "weak",
+      "findings": [
+        {
+          "type": "Mocked Core Path",
+          "evidence_refs": [
+            "repo/tests/test_payment.py::test_process_payment_uses_retry"
+          ],
+          "rationale": "The test patches payment.retry_payment itself, replacing the function whose retry-limit behavior the claim requires the test to validate."
+        }
+      ]
+    }
+  ]
+}

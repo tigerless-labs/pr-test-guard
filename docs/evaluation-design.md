@@ -1,6 +1,6 @@
 # Evaluation Design
 
-This document defines how Claim Harness should be evaluated and reproduced once curated cases and a runner exist. It is not an implementation design, and it does not define a full benchmark suite yet.
+This document defines how Claim Harness should be evaluated and reproduced as curated cases and a runner are introduced.
 
 The goal is to keep Claim Harness centered on test evidence adequacy for agentic PRs, rather than drifting into a generic coverage wrapper.
 
@@ -12,7 +12,7 @@ Claim Harness evaluates test evidence adequacy. It does not prove that a PR is c
 
 ## Input Artifacts
 
-Future cases or runner executions should treat the PR and its review artifacts as the input surface:
+Future runner executions should treat the PR and its review artifacts as the input surface:
 
 - `issue.md` or task description: the source of the requested behavior or engineering change.
 - PR title and description: the author's stated change claims and rationale.
@@ -54,6 +54,8 @@ Claim Harness should be compared against simpler perspectives so the added value
 | Test Diff Heuristic | Whether tests were added or changed, whether assertions increased, and whether skips, mocks, or snapshots changed. | Can detect suspicious shape, but cannot reliably connect tests to claims or executed behavior. |
 | LLM Judge Only | Uses the issue, PR diff, and test diff to prompt an LLM for test sufficiency. | Useful as a prompt-only comparison, but too opaque to be the core method. |
 | Claim Harness Evidence Chain | Combines claim extraction, diff mapping, related tests, coverage, CI evidence, counterfactual probes, and mock boundary analysis. | More artifact-heavy, but produces findings tied to auditable evidence. |
+
+A later benchmark should also include an **LLM All Evidence** baseline that receives the same runtime evidence made available to Claim Harness. This helps distinguish the value of additional evidence from the value of structured evidence linking.
 
 Claim Harness does not reject coverage. Diff coverage should be both a baseline and an evidence source. The harness should find the review risks that coverage alone can miss, including `Weak Assertion`, `Issue-Test Mismatch`, `Mocked Core Path`, `Suspicious Fix Without Test`, and `Counterfactual Survivor`.
 
@@ -97,9 +99,9 @@ The submitted validation scope appears weaker than the PR's affected behavior re
 
 A counterfactual probe weakens, removes, or reverses the claimed behavior and the related tests still pass. This suggests the tests do not actually enforce the behavior named in the claim.
 
-## Case Design
+## Executable Case Contract
 
-Future benchmark-style cases should be small, explicit, and artifact-backed. A case should make it possible to reproduce the evidence chain and compare Claim Harness against simpler baselines.
+Initial benchmark-style cases are intentionally small executable micro-PRs.
 
 Example layout:
 
@@ -108,39 +110,57 @@ cases/
   python/
     weak_assertion_001/
       issue.md
-      pr.diff
-      test.diff
-      coverage.xml
-      ci.log
+      claim.json
       metadata.json
       expected_findings.json
+      pr.patch
+      repo/
+        auth.py
+        tests/
+          test_auth.py
 ```
 
 File roles:
 
 - `issue.md`: source material for the change claim.
-- `pr.diff`: code changes that implement or appear to implement the claim.
-- `test.diff`: added or modified tests and assertion changes.
-- `coverage.xml` or `lcov.info`: coverage evidence for changed code.
-- `ci.log`: evidence about which tests ran and whether they passed.
-- `metadata.json`: language, test framework, case family, task type, and other case-level labels.
-- `expected_findings.json`: human-labeled expected adequacy findings.
+- `claim.json`: manually structured claim or claims used to isolate evidence-adequacy evaluation from automatic claim extraction.
+- `metadata.json`: language, test framework, case family, fixture kind, and case-level labels.
+- `expected_findings.json`: human-authored ground truth created independently from Claim Harness output.
+- `pr.patch`: the PR-like change applied to the base fixture.
+- `repo/`: a minimal executable repository state before the PR patch is applied.
 
-The repository should not add real cases until the case format and expected finding shape are clear enough to review.
+The first cases use manual structured claims on purpose. Automatic natural-language claim extraction is a separate capability and should not be allowed to confound the first evidence-model evaluation.
 
-## Initial Curated Case Families
+## Initial Curated Cases
 
-The first curated cases should cover common ways an agentic PR can look tested while evidence remains inadequate:
+The first executable cases cover:
 
-- `weak_assertion_001`: changed code is executed by coverage, but the test only makes a weak assertion.
-- `missing_test_001`: core behavior changes without related test evidence.
-- `issue_test_mismatch_001`: the issue asks for a failure path, while the test covers only a normal path.
-- `mocked_core_path_001`: the test mocks out the path changed by the PR.
-- `fallback_without_test_001`: the PR adds fallback behavior, exception swallowing, or a default return without failure-path tests.
-- `ci_scope_weakening_001`: CI passes after the validation scope is narrowed or relevant tests are skipped.
-- `counterfactual_survivor_001`: removing or reversing the key fix still leaves the tests passing.
+- `weak_assertion_001`: changed behavior has a related test, but the assertion does not constrain the claim outcome.
+- `issue_test_mismatch_001`: the patch changes an expired-token path while the added test validates only the valid-token path.
+- `mocked_core_path_001`: the relevant test patches the function whose internal behavior is the subject of the claim.
+- `evidence_complete_001`: a positive control where the test directly constrains the stated status and state-change outcomes.
 
-These families should be intentionally small at first. The goal is to validate the evidence model before expanding coverage across languages, frameworks, or agent workflows.
+Later families can add:
+
+- missing test evidence;
+- fallback without failure-path testing;
+- CI scope weakening;
+- explicit counterfactual survivors;
+- uncovered changed branches.
+
+## Ground Truth
+
+Ground truth must be defined before system output is examined.
+
+For curated synthetic cases, the targeted defect is controlled by construction and documented in `expected_findings.json`.
+
+For future real-world agentic PRs:
+
+- use the rubric in `docs/annotation-guidelines.md`;
+- use blind independent reviewers;
+- adjudicate disagreements;
+- report inter-annotator agreement when sample size supports it;
+- exclude or separately report unresolved ambiguous cases.
 
 ## Expected Output
 
@@ -153,13 +173,16 @@ A future runner or case evaluator should emit artifacts that preserve the eviden
 - `mock_boundary_summary.json`: mocks, stubs, patches, and their relationship to the claimed behavior path.
 - `claim_harness_report.md`: human-readable review report summarizing claims, evidence, and findings.
 
-This document defines the intended output shape only. It does not require an implementation in this stage.
+The current curated-case validator only checks case structure and optional fixture executability. It is not the Claim Harness runner.
 
 ## Non-goals for This Stage
 
-- No runner implementation yet.
+- No Claim Harness runner yet.
 - No CLI yet.
-- No real curated cases yet.
+- No automatic claim extraction yet.
+- No LLM integration yet.
+- No automatic counterfactual generation yet.
+- No automatic mock-boundary classification yet.
 - No GitHub Action integration yet.
 - No claim that Claim Harness proves PR correctness.
 - No broad multi-language support yet.
