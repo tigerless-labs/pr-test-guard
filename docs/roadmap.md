@@ -15,8 +15,9 @@ This repository now contains:
 - Baseline comparison rules in `docs/benchmark-protocol.md`.
 - Four executable Python/pytest micro-PR cases under `cases/python/`.
 - A lightweight structural and executability validator in `scripts/validate_cases.py`.
+- A raw artifact runner in `scripts/run_case.py`.
 
-There is still no Claim Harness runner, automated semantic layer, per-test coverage mapping, automated mock analysis, counterfactual generator, or end-to-end baseline implementation.
+There is still no automated adequacy finding engine, automated semantic layer, per-test coverage mapping, automated mock analysis, counterfactual generator, or end-to-end baseline implementation.
 
 ## Ecosystem Position
 
@@ -73,14 +74,17 @@ The stage also defines annotation and benchmark protocols so ground truth is fix
 
 ### Stage 2: Runner Skeleton
 
-Add a lightweight runner that can:
+**Status: initial raw artifact runner added.**
+
+Maintain a lightweight runner that can:
 
 - materialize or copy a case fixture;
 - apply its PR patch;
 - execute pytest;
 - collect raw test results;
-- collect line and branch coverage;
 - preserve raw artifacts rather than immediately compressing them into a score.
+
+The first runner emits test results and an evidence-chain stub. Line and branch coverage collection remains a follow-up within this stage.
 
 ### Stage 3: Per-Test Evidence Mapping
 
