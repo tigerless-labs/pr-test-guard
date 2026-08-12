@@ -96,21 +96,31 @@ python3 scripts/validate_cases.py --run
 
 The `--run` mode requires `git` and `pytest` in the local environment.
 
+Generate raw evidence artifacts for the curated cases:
+
+```bash
+python3 scripts/run_case.py
+```
+
+The runner writes per-case artifacts under `artifacts/`, including test results, a claim-to-file evidence-chain stub, expected findings, and a short Markdown report. It does not make automated adequacy findings yet.
+
 ## Project Documents
 
 - [Methodology](docs/methodology.md): how claims, evidence chains, probes, and mock-boundary checks fit together.
 - [Evaluation Design](docs/evaluation-design.md): how cases, baselines, findings, and expected outputs are organized.
 - [Annotation Guidelines](docs/annotation-guidelines.md): how human ground truth should be created without using Claim Harness output.
 - [Benchmark Protocol](docs/benchmark-protocol.md): how coverage, heuristic, LLM, and Claim Harness methods should be compared.
+- [Runner Artifacts](docs/runner-artifacts.md): what the first raw artifact runner emits for curated cases.
 - [Roadmap](docs/roadmap.md): the MVP boundary and staged evolution.
 
 ## Current Scope
 
-This repository now contains documentation plus the first executable benchmark fixtures and a lightweight case validator.
+This repository now contains documentation plus the first executable benchmark fixtures, a lightweight case validator, and a raw artifact runner.
 
 It still does **not** include:
 
-- the Claim Harness runner;
+- a full Claim Harness adequacy runner;
+- automated adequacy findings;
 - automated claim extraction;
 - per-test coverage mapping;
 - automated LLM semantic reasoning;

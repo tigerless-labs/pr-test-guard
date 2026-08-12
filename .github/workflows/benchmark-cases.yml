@@ -28,3 +28,6 @@ jobs:
 
       - name: Run executable cases
         run: python scripts/validate_cases.py --run
+
+      - name: Generate runner artifacts
+        run: python scripts/run_case.py --output-dir /tmp/claim-harness-artifacts
