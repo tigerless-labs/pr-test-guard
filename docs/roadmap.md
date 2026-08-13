@@ -16,10 +16,11 @@ This repository now contains:
 - Real PR input rules in `docs/real-pr-input.md`.
 - Four executable Python/pytest micro-PR cases under `cases/python/`.
 - A lightweight structural and executability validator in `scripts/validate_cases.py`.
-- A raw artifact runner in `scripts/run_case.py`.
+- An evidence artifact runner in `scripts/run_case.py`.
+- Optional LLM-assisted claim candidate extraction in `scripts/extract_claim_candidates.py`.
 - A dogfood real PR input bundle under `examples/real-pr-bundles/`.
 
-There is still no automated adequacy finding engine, automated real PR ingestion client, automated semantic layer, per-test coverage mapping, automated mock analysis, counterfactual generator, or end-to-end baseline implementation.
+There is still no automated adequacy finding engine, automated real PR ingestion client, per-test coverage mapping, automated mock analysis, counterfactual generator, or end-to-end baseline implementation.
 
 ## Ecosystem Position
 
@@ -76,7 +77,7 @@ The stage also defines annotation and benchmark protocols so ground truth is fix
 
 ### Stage 2: Runner Skeleton
 
-**Status: initial raw artifact runner added.**
+**Status: evidence artifact runner added.**
 
 Maintain a lightweight runner that can:
 
@@ -84,9 +85,10 @@ Maintain a lightweight runner that can:
 - apply its PR patch;
 - execute pytest;
 - collect raw test results;
+- collect line coverage for changed code;
 - preserve raw artifacts rather than immediately compressing them into a score.
 
-The first runner emits test results and an evidence-chain stub. Line and branch coverage collection remains a follow-up within this stage.
+The runner emits test results, coverage XML, a changed-line coverage map, test/assertion summaries, and an evidence chain. Per-test coverage remains a follow-up.
 
 ### Stage 3: Real PR Input Bundles
 
@@ -102,6 +104,8 @@ Maintain a normalized bundle shape for real PR artifacts:
 - LLM-assisted claim candidates.
 
 These bundles validate ingestion shape and evidence preservation. They should not be treated as benchmark ground truth unless independently labeled.
+
+LLM-assisted claim extraction is optional and candidate-only. It is not a default CI requirement and does not produce adequacy findings.
 
 ### Stage 4: Per-Test Evidence Mapping
 

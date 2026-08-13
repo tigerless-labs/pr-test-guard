@@ -9,19 +9,21 @@ and writes reviewable JSON/Markdown outputs for later evidence-chain work.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import shutil
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
 from validate_cases import validate_case
 
 
-RUNNER_VERSION = "0.1"
+RUNNER_VERSION = "0.2"
 
 
 def load_json(path: Path) -> Any:
@@ -50,6 +52,42 @@ def parse_patch_files(patch_text: str) -> tuple[list[str], list[str], list[str]]
     return patch_files, changed_code_files, test_files
 
 
+def parse_changed_code_lines(patch_text: str) -> dict[str, list[dict[str, Any]]]:
+    changed: dict[str, list[dict[str, Any]]] = {}
+    current_file: str | None = None
+    new_line: int | None = None
+
+    for raw_line in patch_text.splitlines():
+        match = re.match(r"^diff --git a/(.*?) b/(.*?)$", raw_line)
+        if match:
+            current_file = match.group(2)
+            new_line = None
+            if current_file and not is_test_path(current_file):
+                changed.setdefault(current_file, [])
+            continue
+
+        hunk = re.match(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@", raw_line)
+        if hunk:
+            new_line = int(hunk.group(1))
+            continue
+
+        if current_file is None or new_line is None:
+            continue
+
+        if raw_line.startswith("+") and not raw_line.startswith("+++"):
+            if not is_test_path(current_file) and raw_line[1:].strip():
+                changed.setdefault(current_file, []).append(
+                    {"line": new_line, "content": raw_line[1:]}
+                )
+            new_line += 1
+        elif raw_line.startswith("-") and not raw_line.startswith("---"):
+            continue
+        else:
+            new_line += 1
+
+    return {path: lines for path, lines in changed.items() if lines}
+
+
 def is_test_path(path: str) -> bool:
     parts = path.split("/")
     filename = parts[-1]
@@ -65,6 +103,166 @@ def run_command(command: list[str], cwd: Path) -> dict[str, Any]:
         "passed": result.returncode == 0,
         "stdout": result.stdout,
         "stderr": result.stderr,
+    }
+
+
+def coverage_command(repo_copy: Path, coverage_xml_path: Path) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    test_result = run_command([sys.executable, "-m", "coverage", "run", "--branch", "-m", "pytest", "-q"], repo_copy)
+    if not test_result["passed"]:
+        return test_result, None
+
+    xml_result = run_command(
+        [sys.executable, "-m", "coverage", "xml", "-o", str(coverage_xml_path)],
+        repo_copy,
+    )
+    return test_result, xml_result
+
+
+def parse_coverage_xml(path: Path) -> dict[str, dict[int, int]]:
+    if not path.is_file():
+        return {}
+
+    root = ET.parse(path).getroot()
+    covered: dict[str, dict[int, int]] = {}
+    for class_node in root.findall(".//class"):
+        filename = class_node.attrib.get("filename")
+        if not filename:
+            continue
+        lines: dict[int, int] = {}
+        for line_node in class_node.findall("./lines/line"):
+            number = line_node.attrib.get("number")
+            hits = line_node.attrib.get("hits", "0")
+            if number:
+                lines[int(number)] = int(hits)
+        covered[filename] = lines
+    return covered
+
+
+def find_coverage_hits(coverage: dict[str, dict[int, int]], file_path: str, line_number: int) -> int | None:
+    candidates = [file_path, f"./{file_path}"]
+    for candidate in candidates:
+        if candidate in coverage:
+            return coverage[candidate].get(line_number, 0)
+
+    for filename, lines in coverage.items():
+        if filename.endswith(file_path):
+            return lines.get(line_number, 0)
+
+    return None
+
+
+def build_coverage_map(
+    case_id: str,
+    changed_code_lines: dict[str, list[dict[str, Any]]],
+    coverage_xml_path: Path,
+) -> dict[str, Any]:
+    coverage = parse_coverage_xml(coverage_xml_path)
+    files = []
+    total_lines = 0
+    covered_lines = 0
+
+    for file_path, lines in changed_code_lines.items():
+        mapped_lines = []
+        for item in lines:
+            total_lines += 1
+            hits = find_coverage_hits(coverage, file_path, item["line"])
+            covered = bool(hits and hits > 0)
+            if covered:
+                covered_lines += 1
+            mapped_lines.append(
+                {
+                    "line": item["line"],
+                    "content": item["content"],
+                    "hits": hits,
+                    "covered": covered,
+                }
+            )
+        files.append({"path": file_path, "changed_lines": mapped_lines})
+
+    return {
+        "case_id": case_id,
+        "runner_version": RUNNER_VERSION,
+        "coverage_artifact": "coverage.xml",
+        "summary": {
+            "changed_code_lines": total_lines,
+            "covered_changed_code_lines": covered_lines,
+            "uncovered_changed_code_lines": total_lines - covered_lines,
+        },
+        "files": files,
+    }
+
+
+def source_for_node(source: str, node: ast.AST) -> str:
+    return (ast.get_source_segment(source, node) or "").strip()
+
+
+def summarize_assertions(repo_copy: Path, test_files: list[str]) -> dict[str, Any]:
+    files = []
+    total_assertions = 0
+
+    for rel_path in test_files:
+        path = repo_copy / rel_path
+        if not path.is_file():
+            continue
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        assertions = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assert):
+                total_assertions += 1
+                assertions.append(
+                    {
+                        "line": node.lineno,
+                        "source": source_for_node(source, node),
+                        "shape": classify_assertion(node),
+                    }
+                )
+        files.append({"path": rel_path, "assertions": sorted(assertions, key=lambda item: item["line"])})
+
+    return {
+        "runner_version": RUNNER_VERSION,
+        "summary": {"assertion_count": total_assertions},
+        "files": files,
+    }
+
+
+def classify_assertion(node: ast.Assert) -> str:
+    test = node.test
+    if isinstance(test, ast.Compare):
+        ops = [type(op).__name__ for op in test.ops]
+        if any(op in {"IsNot", "Is"} for op in ops) and any(
+            isinstance(comp, ast.Constant) and comp.value is None for comp in test.comparators
+        ):
+            return "existence_or_none_check"
+        return "comparison"
+    if isinstance(test, ast.Name):
+        return "truthiness_check"
+    if isinstance(test, ast.Call):
+        return "call_truthiness_check"
+    return type(test).__name__
+
+
+def summarize_tests(repo_copy: Path, test_files: list[str]) -> dict[str, Any]:
+    files = []
+    total_tests = 0
+
+    for rel_path in test_files:
+        path = repo_copy / rel_path
+        if not path.is_file():
+            continue
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        tests = []
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
+                total_tests += 1
+                tests.append({"name": node.name, "line": node.lineno})
+        files.append({"path": rel_path, "tests": sorted(tests, key=lambda item: item["line"])})
+
+    return {
+        "runner_version": RUNNER_VERSION,
+        "summary": {"test_count": total_tests},
+        "files": files,
     }
 
 
@@ -92,6 +290,7 @@ def run_case(case_dir: Path, output_root: Path) -> bool:
     expected_findings = load_json(case_dir / "expected_findings.json")
     patch_text = (case_dir / "pr.patch").read_text(encoding="utf-8")
     patch_files, changed_code_files, test_files = parse_patch_files(patch_text)
+    changed_code_lines = parse_changed_code_lines(patch_text)
 
     with tempfile.TemporaryDirectory(prefix=f"{case_dir.name}-") as temp:
         temp_dir = Path(temp)
@@ -103,11 +302,24 @@ def run_case(case_dir: Path, output_root: Path) -> bool:
             repo_copy,
         )
         test_result = None
+        coverage_xml_path = case_output / "coverage.xml"
+        coverage_xml_result = None
+        test_summary = {"runner_version": RUNNER_VERSION, "summary": {"test_count": 0}, "files": []}
+        assertion_summary = {"runner_version": RUNNER_VERSION, "summary": {"assertion_count": 0}, "files": []}
         if apply_result["passed"]:
-            test_result = run_command([sys.executable, "-m", "pytest", "-q"], repo_copy)
+            test_result, coverage_xml_result = coverage_command(repo_copy, coverage_xml_path)
+            test_summary = summarize_tests(repo_copy, test_files)
+            assertion_summary = summarize_assertions(repo_copy, test_files)
 
     write_json(case_output / "test_result.json", test_result or apply_result)
+    if coverage_xml_result is not None:
+        write_json(case_output / "coverage_result.json", coverage_xml_result)
     write_json(case_output / "expected_findings.json", expected_findings)
+    write_json(case_output / "test_diff_summary.json", test_summary)
+    write_json(case_output / "assertion_summary.json", assertion_summary)
+
+    coverage_map = build_coverage_map(case_dir.name, changed_code_lines, case_output / "coverage.xml")
+    write_json(case_output / "coverage_map.json", coverage_map)
 
     claim_rows = []
     for claim in claim_doc.get("claims", []):
@@ -117,19 +329,21 @@ def run_case(case_dir: Path, output_root: Path) -> bool:
                 "claim_text": claim.get("text"),
                 "source": claim.get("source"),
                 "changed_code_files": changed_code_files,
+                "changed_code_lines": changed_code_lines,
                 "test_files": test_files,
-                "coverage_evidence": None,
+                "test_result": "test_result.json",
+                "coverage_evidence": "coverage_map.json",
                 "ci_evidence": "test_result.json",
                 "adequacy_finding": None,
             }
         )
 
     write_json(
-        case_output / "evidence_chain_stub.json",
+        case_output / "evidence_chain.json",
         {
             "case_id": case_dir.name,
             "runner_version": RUNNER_VERSION,
-            "status": "stub",
+            "status": "evidence_collected",
             "claims": claim_rows,
         },
     )
@@ -145,22 +359,44 @@ def run_case(case_dir: Path, output_root: Path) -> bool:
             "claims_count": len(claim_doc.get("claims", [])),
             "patch_files": patch_files,
             "changed_code_files": changed_code_files,
+            "changed_code_line_count": coverage_map["summary"]["changed_code_lines"],
             "test_files": test_files,
             "patched_tests_passed": passed,
             "artifacts": [
                 "case_summary.json",
                 "test_result.json",
-                "evidence_chain_stub.json",
+                "coverage_result.json",
+                "coverage.xml",
+                "coverage_map.json",
+                "test_diff_summary.json",
+                "assertion_summary.json",
+                "evidence_chain.json",
                 "expected_findings.json",
                 "claim_harness_report.md",
             ],
         },
     )
-    write_report(case_output / "claim_harness_report.md", case_dir.name, claim_doc, passed)
+    write_report(
+        case_output / "claim_harness_report.md",
+        case_dir.name,
+        claim_doc,
+        passed,
+        coverage_map,
+        test_summary,
+        assertion_summary,
+    )
     return passed
 
 
-def write_report(path: Path, case_id: str, claim_doc: dict[str, Any], passed: bool) -> None:
+def write_report(
+    path: Path,
+    case_id: str,
+    claim_doc: dict[str, Any],
+    passed: bool,
+    coverage_map: dict[str, Any],
+    test_summary: dict[str, Any],
+    assertion_summary: dict[str, Any],
+) -> None:
     lines = [
         f"# Claim Harness Case Report: {case_id}",
         "",
@@ -169,6 +405,17 @@ def write_report(path: Path, case_id: str, claim_doc: dict[str, Any], passed: bo
         "## Test Result",
         "",
         f"- Patched fixture tests passed: `{str(passed).lower()}`",
+        "",
+        "## Coverage",
+        "",
+        f"- Changed code lines: `{coverage_map['summary']['changed_code_lines']}`",
+        f"- Covered changed code lines: `{coverage_map['summary']['covered_changed_code_lines']}`",
+        f"- Uncovered changed code lines: `{coverage_map['summary']['uncovered_changed_code_lines']}`",
+        "",
+        "## Test Evidence",
+        "",
+        f"- Test functions discovered: `{test_summary['summary']['test_count']}`",
+        f"- Assertions discovered: `{assertion_summary['summary']['assertion_count']}`",
         "",
         "## Claims",
         "",
@@ -184,7 +431,11 @@ def write_report(path: Path, case_id: str, claim_doc: dict[str, Any], passed: bo
             "",
             "- `case_summary.json`",
             "- `test_result.json`",
-            "- `evidence_chain_stub.json`",
+            "- `coverage.xml`",
+            "- `coverage_map.json`",
+            "- `test_diff_summary.json`",
+            "- `assertion_summary.json`",
+            "- `evidence_chain.json`",
             "- `expected_findings.json`",
             "",
         ]

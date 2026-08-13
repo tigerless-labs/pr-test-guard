@@ -20,8 +20,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install test dependency
-        run: python -m pip install pytest
+      - name: Install test dependencies
+        run: python -m pip install -r requirements.txt
 
       - name: Validate case structure
         run: python scripts/validate_cases.py

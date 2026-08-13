@@ -116,6 +116,15 @@ Validate bundle structure:
 python3 scripts/validate_real_pr_bundles.py
 ```
 
+Optionally refresh claim candidates with an LLM-backed extraction script:
+
+```bash
+OPENAI_API_KEY=... OPENAI_MODEL=... python3 scripts/extract_claim_candidates.py \
+  examples/real-pr-bundles/claim-harness-pr-5
+```
+
+This script is not part of the default CI path. It requires `requirements-llm.txt` and writes candidate claims only.
+
 ## Non-goals
 
 This input contract does not:
