@@ -85,6 +85,7 @@ The benchmark foundation is intentionally small. Its purpose is to stabilize the
 Validate the case structure:
 
 ```bash
+python3 -m pip install -r requirements.txt
 python3 scripts/validate_cases.py
 ```
 
@@ -102,13 +103,22 @@ Generate raw evidence artifacts for the curated cases:
 python3 scripts/run_case.py
 ```
 
-The runner writes per-case artifacts under `artifacts/`, including test results, a claim-to-file evidence-chain stub, expected findings, and a short Markdown report. It does not make automated adequacy findings yet.
+The runner writes per-case artifacts under `artifacts/`, including test results, coverage evidence, test/assertion summaries, an evidence chain, expected findings, and a short Markdown report. It does not make automated adequacy findings yet.
 
 Validate real PR input bundles:
 
 ```bash
 python3 scripts/validate_real_pr_bundles.py
 ```
+
+Optionally extract LLM-assisted claim candidates for a real PR bundle:
+
+```bash
+OPENAI_API_KEY=... OPENAI_MODEL=... python3 scripts/extract_claim_candidates.py \
+  examples/real-pr-bundles/claim-harness-pr-5
+```
+
+This optional script requires `requirements-llm.txt`. It emits candidate claims only, not adequacy findings.
 
 ## Project Documents
 
@@ -122,13 +132,13 @@ python3 scripts/validate_real_pr_bundles.py
 
 ## Current Scope
 
-This repository now contains documentation plus the first executable benchmark fixtures, a lightweight case validator, a raw artifact runner, and a dogfood real PR input bundle.
+This repository now contains documentation plus the first executable benchmark fixtures, a lightweight case validator, an evidence artifact runner, and a dogfood real PR input bundle.
 
 It still does **not** include:
 
 - a full Claim Harness adequacy runner;
 - automated adequacy findings;
-- automated claim extraction;
+- default automated claim extraction;
 - automated real PR ingestion;
 - per-test coverage mapping;
 - automated LLM semantic reasoning;
