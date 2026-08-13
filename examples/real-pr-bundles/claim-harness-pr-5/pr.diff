@@ -1,0 +1,454 @@
+diff --git a/.github/workflows/benchmark-cases.yml b/.github/workflows/benchmark-cases.yml
+index df5442b..a11f5b9 100644
+--- a/.github/workflows/benchmark-cases.yml
++++ b/.github/workflows/benchmark-cases.yml
+@@ -28,3 +28,6 @@ jobs:
+ 
+       - name: Run executable cases
+         run: python scripts/validate_cases.py --run
++
++      - name: Generate runner artifacts
++        run: python scripts/run_case.py --output-dir /tmp/claim-harness-artifacts
+diff --git a/.gitignore b/.gitignore
+index f1c669a..305d5f9 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -36,14 +36,15 @@ htmlcov/
+ *.tmp
+ *.temp
+ .cache/
++artifacts/
+ tmp/
+ temp/
+ 
+ # OS and editor files
+ .DS_Store
+ Thumbs.db
++*:Zone.Identifier
+ .idea/
+ .vscode/
+ *.swp
+ *.swo
+-
+diff --git a/README.md b/README.md
+index b3bb235..9a988f5 100644
+--- a/README.md
++++ b/README.md
+@@ -96,21 +96,31 @@ python3 scripts/validate_cases.py --run
+ 
+ The `--run` mode requires `git` and `pytest` in the local environment.
+ 
++Generate raw evidence artifacts for the curated cases:
++
++```bash
++python3 scripts/run_case.py
++```
++
++The runner writes per-case artifacts under `artifacts/`, including test results, a claim-to-file evidence-chain stub, expected findings, and a short Markdown report. It does not make automated adequacy findings yet.
++
+ ## Project Documents
+ 
+ - [Methodology](docs/methodology.md): how claims, evidence chains, probes, and mock-boundary checks fit together.
+ - [Evaluation Design](docs/evaluation-design.md): how cases, baselines, findings, and expected outputs are organized.
+ - [Annotation Guidelines](docs/annotation-guidelines.md): how human ground truth should be created without using Claim Harness output.
+ - [Benchmark Protocol](docs/benchmark-protocol.md): how coverage, heuristic, LLM, and Claim Harness methods should be compared.
++- [Runner Artifacts](docs/runner-artifacts.md): what the first raw artifact runner emits for curated cases.
+ - [Roadmap](docs/roadmap.md): the MVP boundary and staged evolution.
+ 
+ ## Current Scope
+ 
+-This repository now contains documentation plus the first executable benchmark fixtures and a lightweight case validator.
++This repository now contains documentation plus the first executable benchmark fixtures, a lightweight case validator, and a raw artifact runner.
+ 
+ It still does **not** include:
+ 
+- the Claim Harness runner;
++- a full Claim Harness adequacy runner;
++- automated adequacy findings;
+ - automated claim extraction;
+ - per-test coverage mapping;
+ - automated LLM semantic reasoning;
+diff --git a/docs/roadmap.md b/docs/roadmap.md
+index fabe614..874a110 100644
+--- a/docs/roadmap.md
++++ b/docs/roadmap.md
+@@ -15,8 +15,9 @@ This repository now contains:
+ - Baseline comparison rules in `docs/benchmark-protocol.md`.
+ - Four executable Python/pytest micro-PR cases under `cases/python/`.
+ - A lightweight structural and executability validator in `scripts/validate_cases.py`.
++- A raw artifact runner in `scripts/run_case.py`.
+ 
+-There is still no Claim Harness runner, automated semantic layer, per-test coverage mapping, automated mock analysis, counterfactual generator, or end-to-end baseline implementation.
++There is still no automated adequacy finding engine, automated semantic layer, per-test coverage mapping, automated mock analysis, counterfactual generator, or end-to-end baseline implementation.
+ 
+ ## Ecosystem Position
+ 
+@@ -73,15 +74,18 @@ The stage also defines annotation and benchmark protocols so ground truth is fix
+ 
+ ### Stage 2: Runner Skeleton
+ 
+-Add a lightweight runner that can:
++**Status: initial raw artifact runner added.**
++
++Maintain a lightweight runner that can:
+ 
+ - materialize or copy a case fixture;
+ - apply its PR patch;
+ - execute pytest;
+ - collect raw test results;
+-- collect line and branch coverage;
+ - preserve raw artifacts rather than immediately compressing them into a score.
+ 
++The first runner emits test results and an evidence-chain stub. Line and branch coverage collection remains a follow-up within this stage.
++
+ ### Stage 3: Per-Test Evidence Mapping
+ 
+ Connect:
+diff --git a/docs/runner-artifacts.md b/docs/runner-artifacts.md
+new file mode 100644
+index 0000000..e93a638
+--- /dev/null
++++ b/docs/runner-artifacts.md
+@@ -0,0 +1,83 @@
++# Runner Artifacts
++
++This document describes the first raw artifact runner for curated Claim Harness cases. The runner is not the full evidence-adequacy engine. It prepares the inputs that later stages can use for coverage mapping, semantic alignment, mock-boundary analysis, counterfactual probes, and baseline comparison.
++
++## Purpose
++
++The curated cases already define issues, structured claims, PR-like patches, executable fixtures, metadata, and expected findings. The runner adds a reproducible execution layer:
++
++```text
++case fixture -> patched working copy -> pytest result -> raw evidence artifacts
++```
++
++The first version deliberately stops before automated adequacy judgment. It should preserve evidence, not collapse the case into a single score.
++
++## Command
++
++Run all curated Python cases:
++
++```bash
++python3 scripts/run_case.py
++```
++
++Run one case:
++
++```bash
++python3 scripts/run_case.py --case weak_assertion_001
++```
++
++Write artifacts somewhere other than `artifacts/`:
++
++```bash
++python3 scripts/run_case.py --output-dir /tmp/claim-harness-artifacts
++```
++
++The runner requires `git` and `pytest` in the local environment.
++
++## Generated Files
++
++For each case, the runner writes:
++
++```text
++artifacts/
++  weak_assertion_001/
++    case_summary.json
++    test_result.json
++    evidence_chain_stub.json
++    expected_findings.json
++    claim_harness_report.md
++```
++
++### `case_summary.json`
++
++Summarizes the case id, runner version, metadata, claim count, patch files, changed code files, test files, generated artifact names, and whether the patched fixture tests passed.
++
++### `test_result.json`
++
++Records the command, return code, pass/fail status, stdout, and stderr for the patched fixture test run. If patch application fails, this file records the patch failure instead.
++
++### `evidence_chain_stub.json`
++
++Connects each structured claim to the code files changed by the patch and the test files changed by the patch. Coverage evidence and automated adequacy findings are intentionally left empty in this version.
++
++### `expected_findings.json`
++
++Copies the human-labeled expected findings into the artifact directory so later benchmark tooling can compare method output against stable ground truth.
++
++### `claim_harness_report.md`
++
++Provides a small human-readable report for the case. It summarizes the claims and points to the machine-readable artifacts.
++
++## Non-goals
++
++This runner does not:
++
++- collect coverage yet;
++- produce `findings.json`;
++- infer claim adequacy;
++- call an LLM;
++- classify mock boundaries;
++- generate counterfactual probes;
++- score baselines.
++
++Those stages should build on the raw artifacts rather than replace them.
+diff --git a/scripts/run_case.py b/scripts/run_case.py
+new file mode 100644
+index 0000000..076a5c7
+--- /dev/null
++++ b/scripts/run_case.py
+@@ -0,0 +1,253 @@
++#!/usr/bin/env python3
++"""Run curated Claim Harness cases and emit raw evidence artifacts.
++
++This is intentionally a small artifact runner, not the full Claim Harness
++evaluation engine. It applies each case patch, runs the patched pytest fixture,
++and writes reviewable JSON/Markdown outputs for later evidence-chain work.
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import re
++import shutil
++import subprocess
++import sys
++import tempfile
++from pathlib import Path
++from typing import Any
++
++from validate_cases import validate_case
++
++
++RUNNER_VERSION = "0.1"
++
++
++def load_json(path: Path) -> Any:
++    return json.loads(path.read_text(encoding="utf-8"))
++
++
++def write_json(path: Path, data: Any) -> None:
++    path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
++
++
++def parse_patch_files(patch_text: str) -> tuple[list[str], list[str], list[str]]:
++    patch_files: list[str] = []
++    changed_code_files: list[str] = []
++    test_files: list[str] = []
++
++    for match in re.finditer(r"^diff --git a/(.*?) b/(.*?)$", patch_text, re.MULTILINE):
++        path = match.group(2)
++        if path not in patch_files:
++            patch_files.append(path)
++        if is_test_path(path):
++            if path not in test_files:
++                test_files.append(path)
++        elif path not in changed_code_files:
++            changed_code_files.append(path)
++
++    return patch_files, changed_code_files, test_files
++
++
++def is_test_path(path: str) -> bool:
++    parts = path.split("/")
++    filename = parts[-1]
++    return "tests" in parts or filename.startswith("test_") or filename.endswith("_test.py")
++
++
++def run_command(command: list[str], cwd: Path) -> dict[str, Any]:
++    result = subprocess.run(command, cwd=cwd, capture_output=True, text=True)
++    return {
++        "command": command,
++        "cwd": str(cwd),
++        "returncode": result.returncode,
++        "passed": result.returncode == 0,
++        "stdout": result.stdout,
++        "stderr": result.stderr,
++    }
++
++
++def run_case(case_dir: Path, output_root: Path) -> bool:
++    errors = validate_case(case_dir)
++    case_output = output_root / case_dir.name
++    if case_output.exists():
++        shutil.rmtree(case_output)
++    case_output.mkdir(parents=True, exist_ok=True)
++
++    if errors:
++        write_json(
++            case_output / "case_summary.json",
++            {
++                "case_id": case_dir.name,
++                "runner_version": RUNNER_VERSION,
++                "valid": False,
++                "validation_errors": errors,
++            },
++        )
++        return False
++
++    metadata = load_json(case_dir / "metadata.json")
++    claim_doc = load_json(case_dir / "claim.json")
++    expected_findings = load_json(case_dir / "expected_findings.json")
++    patch_text = (case_dir / "pr.patch").read_text(encoding="utf-8")
++    patch_files, changed_code_files, test_files = parse_patch_files(patch_text)
++
++    with tempfile.TemporaryDirectory(prefix=f"{case_dir.name}-") as temp:
++        temp_dir = Path(temp)
++        repo_copy = temp_dir / "repo"
++        shutil.copytree(case_dir / "repo", repo_copy)
++
++        apply_result = run_command(
++            ["git", "apply", "--whitespace=nowarn", str((case_dir / "pr.patch").resolve())],
++            repo_copy,
++        )
++        test_result = None
++        if apply_result["passed"]:
++            test_result = run_command([sys.executable, "-m", "pytest", "-q"], repo_copy)
++
++    write_json(case_output / "test_result.json", test_result or apply_result)
++    write_json(case_output / "expected_findings.json", expected_findings)
++
++    claim_rows = []
++    for claim in claim_doc.get("claims", []):
++        claim_rows.append(
++            {
++                "claim_id": claim.get("id"),
++                "claim_text": claim.get("text"),
++                "source": claim.get("source"),
++                "changed_code_files": changed_code_files,
++                "test_files": test_files,
++                "coverage_evidence": None,
++                "ci_evidence": "test_result.json",
++                "adequacy_finding": None,
++            }
++        )
++
++    write_json(
++        case_output / "evidence_chain_stub.json",
++        {
++            "case_id": case_dir.name,
++            "runner_version": RUNNER_VERSION,
++            "status": "stub",
++            "claims": claim_rows,
++        },
++    )
++
++    passed = bool((test_result or apply_result)["passed"])
++    write_json(
++        case_output / "case_summary.json",
++        {
++            "case_id": case_dir.name,
++            "runner_version": RUNNER_VERSION,
++            "valid": True,
++            "metadata": metadata,
++            "claims_count": len(claim_doc.get("claims", [])),
++            "patch_files": patch_files,
++            "changed_code_files": changed_code_files,
++            "test_files": test_files,
++            "patched_tests_passed": passed,
++            "artifacts": [
++                "case_summary.json",
++                "test_result.json",
++                "evidence_chain_stub.json",
++                "expected_findings.json",
++                "claim_harness_report.md",
++            ],
++        },
++    )
++    write_report(case_output / "claim_harness_report.md", case_dir.name, claim_doc, passed)
++    return passed
++
++
++def write_report(path: Path, case_id: str, claim_doc: dict[str, Any], passed: bool) -> None:
++    lines = [
++        f"# Claim Harness Case Report: {case_id}",
++        "",
++        "This report is generated by the raw artifact runner. It does not make automated adequacy findings yet.",
++        "",
++        "## Test Result",
++        "",
++        f"- Patched fixture tests passed: `{str(passed).lower()}`",
++        "",
++        "## Claims",
++        "",
++    ]
++
++    for claim in claim_doc.get("claims", []):
++        lines.append(f"- `{claim.get('id')}`: {claim.get('text')}")
++
++    lines.extend(
++        [
++            "",
++            "## Artifact References",
++            "",
++            "- `case_summary.json`",
++            "- `test_result.json`",
++            "- `evidence_chain_stub.json`",
++            "- `expected_findings.json`",
++            "",
++        ]
++    )
++    path.write_text("\n".join(lines), encoding="utf-8")
++
++
++def discover_cases(cases_root: Path, selected: list[str]) -> list[Path]:
++    if selected:
++        case_dirs = [cases_root / case_id for case_id in selected]
++    else:
++        case_dirs = sorted(path for path in cases_root.iterdir() if path.is_dir())
++
++    missing = [path for path in case_dirs if not path.is_dir()]
++    if missing:
++        names = ", ".join(str(path) for path in missing)
++        raise ValueError(f"case not found: {names}")
++
++    return case_dirs
++
++
++def main() -> int:
++    parser = argparse.ArgumentParser()
++    parser.add_argument(
++        "--cases-root",
++        default="cases/python",
++        help="directory containing curated cases (default: cases/python)",
++    )
++    parser.add_argument(
++        "--case",
++        action="append",
++        default=[],
++        help="case id to run; may be provided multiple times",
++    )
++    parser.add_argument(
++        "--output-dir",
++        default="artifacts",
++        help="directory for generated artifacts (default: artifacts)",
++    )
++    args = parser.parse_args()
++
++    cases_root = Path(args.cases_root)
++    output_root = Path(args.output_dir)
++    if not cases_root.is_dir():
++        print(f"ERROR: cases root not found: {cases_root}", file=sys.stderr)
++        return 1
++
++    try:
++        case_dirs = discover_cases(cases_root, args.case)
++    except ValueError as exc:
++        print(f"ERROR: {exc}", file=sys.stderr)
++        return 1
++
++    output_root.mkdir(parents=True, exist_ok=True)
++    failed = False
++    for case_dir in case_dirs:
++        ok = run_case(case_dir, output_root)
++        status = "OK" if ok else "FAIL"
++        print(f"[{status}] {case_dir.name} -> {output_root / case_dir.name}")
++        failed = failed or not ok
++
++    return 1 if failed else 0
++
++
++if __name__ == "__main__":
++    raise SystemExit(main())

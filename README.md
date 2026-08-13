@@ -104,10 +104,17 @@ python3 scripts/run_case.py
 
 The runner writes per-case artifacts under `artifacts/`, including test results, a claim-to-file evidence-chain stub, expected findings, and a short Markdown report. It does not make automated adequacy findings yet.
 
+Validate real PR input bundles:
+
+```bash
+python3 scripts/validate_real_pr_bundles.py
+```
+
 ## Project Documents
 
 - [Methodology](docs/methodology.md): how claims, evidence chains, probes, and mock-boundary checks fit together.
 - [Evaluation Design](docs/evaluation-design.md): how cases, baselines, findings, and expected outputs are organized.
+- [Real PR Input Bundles](docs/real-pr-input.md): how real PR artifacts and LLM-assisted claim candidates should be organized.
 - [Annotation Guidelines](docs/annotation-guidelines.md): how human ground truth should be created without using Claim Harness output.
 - [Benchmark Protocol](docs/benchmark-protocol.md): how coverage, heuristic, LLM, and Claim Harness methods should be compared.
 - [Runner Artifacts](docs/runner-artifacts.md): what the first raw artifact runner emits for curated cases.
@@ -115,13 +122,14 @@ The runner writes per-case artifacts under `artifacts/`, including test results,
 
 ## Current Scope
 
-This repository now contains documentation plus the first executable benchmark fixtures, a lightweight case validator, and a raw artifact runner.
+This repository now contains documentation plus the first executable benchmark fixtures, a lightweight case validator, a raw artifact runner, and a dogfood real PR input bundle.
 
 It still does **not** include:
 
 - a full Claim Harness adequacy runner;
 - automated adequacy findings;
 - automated claim extraction;
+- automated real PR ingestion;
 - per-test coverage mapping;
 - automated LLM semantic reasoning;
 - automated mock-boundary classification;

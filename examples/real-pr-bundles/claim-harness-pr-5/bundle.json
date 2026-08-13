@@ -1,0 +1,22 @@
+{
+  "bundle_id": "claim-harness-pr-5",
+  "bundle_type": "real_pr_ingestion_smoke",
+  "repository": "tigerless-labs/claim-harness",
+  "provider": "github",
+  "pr_number": 5,
+  "pr_url": "https://github.com/tigerless-labs/claim-harness/pull/5",
+  "base_ref": "main",
+  "head_ref": "runner/evidence-artifacts-v0",
+  "artifacts": {
+    "pr_metadata": "pr.json",
+    "pr_diff": "pr.diff",
+    "ci_summary": "ci-summary.md",
+    "claim_candidates": "claim_candidates.json",
+    "missing_artifacts": "missing_artifacts.json"
+  },
+  "ground_truth": {
+    "is_benchmark_case": false,
+    "has_independent_labels": false,
+    "notes": "This bundle validates real PR artifact organization only."
+  }
+}

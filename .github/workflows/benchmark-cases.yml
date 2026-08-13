@@ -31,3 +31,6 @@ jobs:
 
       - name: Generate runner artifacts
         run: python scripts/run_case.py --output-dir /tmp/claim-harness-artifacts
+
+      - name: Validate real PR bundles
+        run: python scripts/validate_real_pr_bundles.py

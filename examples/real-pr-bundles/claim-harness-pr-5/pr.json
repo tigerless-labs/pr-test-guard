@@ -1,0 +1,33 @@
+{
+  "number": 5,
+  "url": "https://github.com/tigerless-labs/claim-harness/pull/5",
+  "title": "runner: emit evidence artifacts for curated cases",
+  "state": "MERGED",
+  "author": {
+    "login": "faj-design5260",
+    "name": "faj-design"
+  },
+  "base_ref": "main",
+  "head_ref": "runner/evidence-artifacts-v0",
+  "merged_at": "2026-08-12T09:54:50Z",
+  "merge_commit": "29557e3bf5966a7e12c097bb71d37cbfe275456b",
+  "changed_files": 6,
+  "additions": 360,
+  "deletions": 6,
+  "commits": [
+    {
+      "oid": "bd0726498e6ff226b3dc0acc4ff262d9ac309c96",
+      "message": "runner: emit evidence artifacts for curated cases",
+      "authored_at": "2026-08-12T09:53:16Z",
+      "committed_at": "2026-08-12T09:53:16Z",
+      "authors": [
+        {
+          "login": "faj-design5260",
+          "name": "faj-design5260",
+          "email": "faj@tigerless.com"
+        }
+      ]
+    }
+  ],
+  "body": "## Summary\n\nAdd the first raw artifact runner for curated Claim Harness cases.\n\nThis PR adds:\n- scripts/run_case.py to apply case patches, run pytest, and emit per-case artifacts\n- docs/runner-artifacts.md documenting generated artifact files and non-goals\n- README and roadmap updates for the raw runner stage\n- CI coverage for generating runner artifacts\n- ignore rules for generated artifacts and platform metadata\n\n## Scope\n\nThis is a runner skeleton for raw evidence artifacts. It does not implement automated adequacy findings, coverage collection, semantic alignment, mock-boundary classification, counterfactual probes, or benchmark scoring.\n\n## Validation\n\n- .venv/bin/python scripts/validate_cases.py\n- .venv/bin/python scripts/validate_cases.py --run\n- .venv/bin/python scripts/run_case.py --output-dir /tmp/claim-harness-artifacts\n- .venv/bin/python -m compileall scripts"
+}

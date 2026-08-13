@@ -13,11 +13,13 @@ This repository now contains:
 - Evaluation design in `docs/evaluation-design.md`.
 - Human-labeling rules in `docs/annotation-guidelines.md`.
 - Baseline comparison rules in `docs/benchmark-protocol.md`.
+- Real PR input rules in `docs/real-pr-input.md`.
 - Four executable Python/pytest micro-PR cases under `cases/python/`.
 - A lightweight structural and executability validator in `scripts/validate_cases.py`.
 - A raw artifact runner in `scripts/run_case.py`.
+- A dogfood real PR input bundle under `examples/real-pr-bundles/`.
 
-There is still no automated adequacy finding engine, automated semantic layer, per-test coverage mapping, automated mock analysis, counterfactual generator, or end-to-end baseline implementation.
+There is still no automated adequacy finding engine, automated real PR ingestion client, automated semantic layer, per-test coverage mapping, automated mock analysis, counterfactual generator, or end-to-end baseline implementation.
 
 ## Ecosystem Position
 
@@ -86,7 +88,22 @@ Maintain a lightweight runner that can:
 
 The first runner emits test results and an evidence-chain stub. Line and branch coverage collection remains a follow-up within this stage.
 
-### Stage 3: Per-Test Evidence Mapping
+### Stage 3: Real PR Input Bundles
+
+**Status: input contract and dogfood bundle added.**
+
+Maintain a normalized bundle shape for real PR artifacts:
+
+- PR metadata;
+- PR diff;
+- CI summary or logs;
+- optional coverage artifacts;
+- missing-artifact records;
+- LLM-assisted claim candidates.
+
+These bundles validate ingestion shape and evidence preservation. They should not be treated as benchmark ground truth unless independently labeled.
+
+### Stage 4: Per-Test Evidence Mapping
 
 Connect:
 
@@ -98,7 +115,7 @@ For the Python MVP, this stage can use diff parsing, Python AST information, pyt
 
 Emit the first machine-readable `evidence_chain.json`.
 
-### Stage 4: Initial Automated Findings
+### Stage 5: Initial Automated Findings
 
 Implement the first deterministic or mostly deterministic findings:
 
@@ -109,7 +126,7 @@ Implement the first deterministic or mostly deterministic findings:
 
 Keep the rules auditable and report evidence references instead of a single opaque score.
 
-### Stage 5: Semantic Alignment
+### Stage 6: Semantic Alignment
 
 Introduce an LLM-assisted semantic layer for tasks that genuinely require natural-language understanding:
 
@@ -120,7 +137,7 @@ Introduce an LLM-assisted semantic layer for tasks that genuinely require natura
 
 The LLM should propose or interpret semantics; structural and runtime artifacts remain the primary evidence.
 
-### Stage 6: Mock Boundary Analysis
+### Stage 7: Mock Boundary Analysis
 
 Start with explicit Python mock patterns:
 
@@ -130,7 +147,7 @@ Start with explicit Python mock patterns:
 
 First detect mock targets structurally. Then determine whether the mock merely isolates a dependency or replaces the behavior named by the claim.
 
-### Stage 7: Controlled Counterfactual Probes
+### Stage 8: Controlled Counterfactual Probes
 
 Introduce reproducible claim-guided probes.
 
@@ -142,7 +159,7 @@ Progress from:
 
 A `Counterfactual Survivor` requires an actual rerun result, not an LLM prediction.
 
-### Stage 8: Baseline Benchmark
+### Stage 9: Baseline Benchmark
 
 Run the same labeled case suite through:
 
@@ -154,7 +171,7 @@ Run the same labeled case suite through:
 
 Report precision, recall, F1, and per-finding results. Add stability, cost, and evidence-localization metrics as the implementations mature.
 
-### Stage 9: Real-World Agentic PR Validation
+### Stage 10: Real-World Agentic PR Validation
 
 Expand beyond synthetic cases only after the evaluation contract is stable.
 
