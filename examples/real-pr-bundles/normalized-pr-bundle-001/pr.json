@@ -1,0 +1,33 @@
+{
+  "number": 17,
+  "url": "https://example.invalid/example-org/example-service/pull/17",
+  "title": "Reject empty passwords during user creation",
+  "state": "OPEN",
+  "author": {
+    "login": "example-agent",
+    "name": "Example Agent"
+  },
+  "base_ref": "main",
+  "head_ref": "agent/empty-password-guard",
+  "merged_at": null,
+  "merge_commit": null,
+  "changed_files": 2,
+  "additions": 9,
+  "deletions": 0,
+  "commits": [
+    {
+      "oid": "0000000000000000000000000000000000000017",
+      "message": "Reject empty passwords during user creation",
+      "authored_at": "2026-08-14T00:00:00Z",
+      "committed_at": "2026-08-14T00:00:00Z",
+      "authors": [
+        {
+          "login": "example-agent",
+          "name": "Example Agent",
+          "email": "agent@example.invalid"
+        }
+      ]
+    }
+  ],
+  "body": "## Summary\n\nReject empty passwords before creating a user record.\n\nThis PR adds an early return that responds with HTTP 400 when password input is empty and adds a pytest case for the rejection path.\n\n## Validation\n\n- unit-tests\n- lint"
+}

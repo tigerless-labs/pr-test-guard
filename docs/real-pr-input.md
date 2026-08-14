@@ -2,7 +2,7 @@
 
 This document defines the first input contract for bringing real agentic PRs into Claim Harness. Curated cases remain the benchmark foundation; real PR bundles are the bridge to reviewer-facing usage.
 
-The goal is to preserve the evidence surface for a PR without pretending every artifact is always available.
+The goal is to preserve the evidence surface for a PR without pretending every artifact is always available or that every AI agent formats PRs the same way.
 
 ## Bundle Goal
 
@@ -13,6 +13,26 @@ what did the PR claim -> what changed -> what tests changed or ran -> what evide
 ```
 
 The bundle is not a finding report. It is the normalized input that later runner stages can use for coverage mapping, semantic alignment, mock-boundary analysis, counterfactual probes, and deterministic findings.
+
+## Agent-Agnostic Input Layer
+
+Claim Harness should not bind its core runner to one AI agent's PR style. Different agents may put claims in different places:
+
+- issue text;
+- task prompts;
+- PR title and body;
+- commit messages;
+- generated summaries;
+- review comments;
+- code and test diffs.
+
+The public contract is therefore:
+
+```text
+agent-specific artifacts -> normalized real PR bundle -> claim candidates -> evidence artifacts
+```
+
+Agent-specific parsing should live in thin adapters that produce the same bundle shape. The core evidence runner should consume normalized artifacts and explicit missing-artifact records.
 
 ## Layout
 
@@ -108,9 +128,15 @@ Missing artifacts should lower confidence in the evidence chain, but they should
 
 Curated cases define controlled ground truth. Real PR bundles define ingestion shape.
 
-Do not use a real PR bundle as benchmark ground truth unless it has been independently labeled under `docs/annotation-guidelines.md`. A dogfood bundle can validate artifact organization without becoming a scored case.
+Do not use a real PR bundle as benchmark ground truth unless it has been independently labeled under `docs/annotation-guidelines.md`. A synthetic normalized bundle can validate artifact organization without becoming a scored case.
 
 Validate bundle structure:
+
+```bash
+python3 -m claim_harness validate-real-pr-bundles
+```
+
+The legacy script entrypoint remains available:
 
 ```bash
 python3 scripts/validate_real_pr_bundles.py
@@ -120,7 +146,7 @@ Optionally refresh claim candidates with an LLM-backed extraction script:
 
 ```bash
 OPENAI_API_KEY=... OPENAI_MODEL=... python3 scripts/extract_claim_candidates.py \
-  examples/real-pr-bundles/claim-harness-pr-5
+  examples/real-pr-bundles/normalized-pr-bundle-001
 ```
 
 This script is not part of the default CI path. It requires `requirements-llm.txt` and writes candidate claims only.

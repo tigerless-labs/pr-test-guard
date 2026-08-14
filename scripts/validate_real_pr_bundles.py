@@ -88,7 +88,7 @@ def validate_bundle(bundle_dir: Path) -> list[str]:
     if not isinstance(ground_truth, dict):
         errors.append("bundle.json must include ground_truth")
     elif ground_truth.get("is_benchmark_case") is not False:
-        errors.append("dogfood real PR bundles must not be marked as benchmark cases")
+        errors.append("example real PR bundles must not be marked as benchmark cases")
 
     return errors
 

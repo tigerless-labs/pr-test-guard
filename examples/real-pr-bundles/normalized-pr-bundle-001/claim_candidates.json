@@ -1,0 +1,51 @@
+{
+  "bundle_id": "normalized-pr-bundle-001",
+  "candidate_version": "0.1",
+  "producer": {
+    "mode": "synthetic_claim_candidate_contract",
+    "review_status": "human_review_required",
+    "notes": "These are candidate change claims extracted from synthetic PR metadata and diff context. They are not adequacy findings."
+  },
+  "source_artifacts": [
+    "pr.json",
+    "pr.diff",
+    "ci-summary.md"
+  ],
+  "claims": [
+    {
+      "id": "RC1",
+      "text": "Creating a user with an empty password returns HTTP 400.",
+      "source_refs": [
+        "pr.json:title",
+        "pr.json:body",
+        "pr.diff:service/auth.py"
+      ],
+      "expected_evidence": [
+        "service/auth.py",
+        "tests/test_auth.py",
+        "ci-summary.md"
+      ],
+      "candidate_confidence": "high",
+      "notes": "The claim should be checked against test assertions, changed-line coverage, and any available CI evidence."
+    },
+    {
+      "id": "RC2",
+      "text": "The empty-password path should not create a user record.",
+      "source_refs": [
+        "pr.json:body",
+        "pr.diff:service/auth.py"
+      ],
+      "expected_evidence": [
+        "service/auth.py",
+        "tests/test_auth.py"
+      ],
+      "candidate_confidence": "medium",
+      "notes": "The diff suggests an early return before persistence, but this candidate still requires mapped test evidence."
+    }
+  ],
+  "limits": [
+    "Claims are candidates only.",
+    "No claim should be converted to Evidence Complete without mapped test, coverage, CI, or other relevant evidence.",
+    "This file does not replace human review."
+  ]
+}

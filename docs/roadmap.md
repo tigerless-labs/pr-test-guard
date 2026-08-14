@@ -17,8 +17,9 @@ This repository now contains:
 - Four executable Python/pytest micro-PR cases under `cases/python/`.
 - A lightweight structural and executability validator in `scripts/validate_cases.py`.
 - A curated-case runner in `scripts/run_case.py` that emits evidence artifacts, v0 findings, mock-boundary summaries, limited counterfactual probe results, and expected-label comparisons.
+- A public source-tree module entrypoint via `python -m claim_harness` and `claim-harness`.
 - Optional LLM-assisted claim candidate extraction in `scripts/extract_claim_candidates.py`.
-- A dogfood real PR input bundle under `examples/real-pr-bundles/`.
+- A synthetic normalized PR bundle under `examples/real-pr-bundles/`.
 
 There is still no general-purpose adequacy runner for arbitrary repositories, automated real PR ingestion client, per-test coverage mapping, broad semantic alignment, broad mock analysis, broad counterfactual generator, or end-to-end baseline implementation.
 
@@ -77,7 +78,7 @@ The stage also defines annotation and benchmark protocols so ground truth is fix
 
 ### Stage 2: Runner Skeleton
 
-**Status: evidence and v0 findings runner added.**
+**Status: evidence and v0 findings runner added with stable source-tree entrypoint.**
 
 Maintain a lightweight runner that can:
 
@@ -88,13 +89,14 @@ Maintain a lightweight runner that can:
 - collect line coverage for changed code;
 - preserve raw artifacts rather than immediately compressing them into a score;
 - emit deterministic v0 findings for the initial curated case families;
-- compare generated labels with expected labels.
+- compare generated labels with expected labels;
+- expose the workflow through `python -m claim_harness` while preserving legacy scripts.
 
 The runner emits test results, coverage XML, a changed-line coverage map, test/assertion summaries, mock-boundary summaries, limited counterfactual probe results, an evidence chain, generated findings, expected-label comparison, and a Markdown report. Per-test coverage remains a follow-up.
 
 ### Stage 3: Real PR Input Bundles
 
-**Status: input contract and dogfood bundle added.**
+**Status: input contract and synthetic normalized bundle added.**
 
 Maintain a normalized bundle shape for real PR artifacts:
 
@@ -108,6 +110,8 @@ Maintain a normalized bundle shape for real PR artifacts:
 These bundles validate ingestion shape and evidence preservation. They should not be treated as benchmark ground truth unless independently labeled.
 
 LLM-assisted claim extraction is optional and candidate-only. It is not a default CI requirement and does not produce adequacy findings.
+
+The normalized bundle layer is intentionally agent-agnostic. Future adapter work should translate provider-specific PR surfaces into the same bundle contract instead of adding agent-specific assumptions to the core runner.
 
 ### Stage 4: Per-Test Evidence Mapping
 
