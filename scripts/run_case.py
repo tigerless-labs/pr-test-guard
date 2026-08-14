@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Run curated Claim Harness cases and emit raw evidence artifacts.
+"""Run curated Claim Harness cases and emit evidence adequacy artifacts.
 
-This is intentionally a small artifact runner, not the full Claim Harness
-evaluation engine. It applies each case patch, runs the patched pytest fixture,
-and writes reviewable JSON/Markdown outputs for later evidence-chain work.
+This is intentionally a small runner, not a general repository evaluator. It
+applies each case patch, runs the patched pytest fixture, maps coverage, checks
+obvious assertion and mock-boundary signals, runs limited counterfactual probes,
+and writes reviewable JSON/Markdown outputs.
 """
 
 from __future__ import annotations
@@ -23,7 +24,26 @@ from typing import Any
 from validate_cases import validate_case
 
 
-RUNNER_VERSION = "0.2"
+RUNNER_VERSION = "0.3"
+
+WEAK_ASSERTION_SHAPES = {
+    "existence_or_none_check",
+    "truthiness_check",
+    "call_truthiness_check",
+}
+
+PROBE_REPLACEMENTS = [
+    ("status_code=400", "status_code=201", "weaken HTTP 400 response to success"),
+    ("status_code = 400", "status_code = 201", "weaken HTTP 400 response to success"),
+    ("return 400", "return 201", "weaken HTTP 400 return to success"),
+    ("return 401", "return 200", "weaken HTTP 401 return to success"),
+    ("status_code=401", "status_code=200", "weaken HTTP 401 response to success"),
+    ("status_code = 401", "status_code = 200", "weaken HTTP 401 response to success"),
+    ("return False", "return True", "flip false return"),
+    ("return True", "return False", "flip true return"),
+    ("max_attempts: int = 3", "max_attempts: int = 5", "weaken retry limit"),
+    ("max_attempts=3", "max_attempts=5", "weaken retry limit"),
+]
 
 
 def load_json(path: Path) -> Any:
@@ -104,6 +124,12 @@ def run_command(command: list[str], cwd: Path) -> dict[str, Any]:
         "stdout": result.stdout,
         "stderr": result.stderr,
     }
+
+
+def clear_python_bytecode(root: Path) -> None:
+    for cache_dir in root.rglob("__pycache__"):
+        if cache_dir.is_dir():
+            shutil.rmtree(cache_dir)
 
 
 def coverage_command(repo_copy: Path, coverage_xml_path: Path) -> tuple[dict[str, Any], dict[str, Any] | None]:
@@ -196,6 +222,31 @@ def source_for_node(source: str, node: ast.AST) -> str:
     return (ast.get_source_segment(source, node) or "").strip()
 
 
+def dotted_name(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        prefix = dotted_name(node.value)
+        return f"{prefix}.{node.attr}" if prefix else node.attr
+    return None
+
+
+def call_name(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Call):
+        return dotted_name(node.func)
+    return None
+
+
+def token_set(*values: str | None) -> set[str]:
+    tokens: set[str] = set()
+    for value in values:
+        if not value:
+            continue
+        normalized = value.lower().replace("_", " ")
+        tokens.update(re.findall(r"[a-zA-Z0-9]+", normalized))
+    return {token for token in tokens if len(token) > 1}
+
+
 def summarize_assertions(repo_copy: Path, test_files: list[str]) -> dict[str, Any]:
     files = []
     total_assertions = 0
@@ -266,6 +317,461 @@ def summarize_tests(repo_copy: Path, test_files: list[str]) -> dict[str, Any]:
     }
 
 
+def collect_changed_symbols(
+    repo_copy: Path,
+    changed_code_files: list[str],
+    changed_code_lines: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    symbols: list[dict[str, Any]] = []
+
+    for rel_path in changed_code_files:
+        path = repo_copy / rel_path
+        if not path.is_file() or path.suffix != ".py":
+            continue
+        changed_lines = {item["line"] for item in changed_code_lines.get(rel_path, [])}
+        if not changed_lines:
+            continue
+
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        module_name = path.with_suffix("").name
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            start = getattr(node, "lineno", None)
+            end = getattr(node, "end_lineno", start)
+            if start is None or end is None:
+                continue
+            if not any(start <= line <= end for line in changed_lines):
+                continue
+            symbols.append(
+                {
+                    "file": rel_path,
+                    "name": node.name,
+                    "kind": type(node).__name__,
+                    "line_start": start,
+                    "line_end": end,
+                    "candidate_targets": sorted(
+                        {
+                            node.name,
+                            f"{module_name}.{node.name}",
+                            f"{rel_path.removesuffix('.py').replace('/', '.')}.{node.name}",
+                        }
+                    ),
+                }
+            )
+
+    return symbols
+
+
+def extract_mock_target(source: str, node: ast.Call) -> tuple[str | None, str | None]:
+    name = call_name(node)
+    if not name:
+        return None, None
+
+    if name.endswith("patch.object") and len(node.args) >= 2:
+        attr = node.args[1]
+        if isinstance(attr, ast.Constant) and isinstance(attr.value, str):
+            return f"{source_for_node(source, node.args[0])}.{attr.value}", "patch.object"
+
+    if name == "patch" or name.endswith(".patch"):
+        if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+            return node.args[0].value, "patch"
+
+    if name.endswith(".setattr") and len(node.args) >= 2:
+        if isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
+            return node.args[0].value, "setattr"
+        if isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str):
+            return f"{source_for_node(source, node.args[0])}.{node.args[1].value}", "setattr"
+
+    return None, None
+
+
+def mock_matches_changed_symbol(target: str, symbol: dict[str, Any]) -> bool:
+    normalized = target.strip("'\"")
+    for candidate in symbol["candidate_targets"]:
+        if normalized == candidate or normalized.endswith(f".{candidate}") or candidate.endswith(f".{normalized}"):
+            return True
+    return False
+
+
+def summarize_mock_boundaries(
+    repo_copy: Path,
+    test_files: list[str],
+    changed_symbols: list[dict[str, Any]],
+) -> dict[str, Any]:
+    mocks: list[dict[str, Any]] = []
+
+    for rel_path in test_files:
+        path = repo_copy / rel_path
+        if not path.is_file() or path.suffix != ".py":
+            continue
+        source = path.read_text(encoding="utf-8")
+        tree = ast.parse(source)
+
+        for test_node in ast.walk(tree):
+            if not isinstance(test_node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if not test_node.name.startswith("test_"):
+                continue
+
+            call_nodes = [
+                node for node in ast.walk(test_node) if isinstance(node, ast.Call)
+            ]
+            call_nodes.extend(
+                node for node in test_node.decorator_list if isinstance(node, ast.Call)
+            )
+            for call in call_nodes:
+                target, style = extract_mock_target(source, call)
+                if not target or not style:
+                    continue
+                matched_symbols = [
+                    symbol
+                    for symbol in changed_symbols
+                    if mock_matches_changed_symbol(target, symbol)
+                ]
+                mocks.append(
+                    {
+                        "file": rel_path,
+                        "line": call.lineno,
+                        "test": test_node.name,
+                        "style": style,
+                        "target": target,
+                        "source": source_for_node(source, call),
+                        "is_core_path_candidate": bool(matched_symbols),
+                        "matched_changed_symbols": matched_symbols,
+                    }
+                )
+
+    return {
+        "runner_version": RUNNER_VERSION,
+        "summary": {
+            "mock_count": len(mocks),
+            "core_path_candidate_count": sum(
+                1 for item in mocks if item["is_core_path_candidate"]
+            ),
+        },
+        "changed_symbols": changed_symbols,
+        "mocks": sorted(mocks, key=lambda item: (item["file"], item["line"], item["target"])),
+    }
+
+
+def generate_counterfactual_probes(
+    changed_code_lines: dict[str, list[dict[str, Any]]],
+    max_probes: int = 5,
+) -> list[dict[str, Any]]:
+    probes: list[dict[str, Any]] = []
+    for rel_path, lines in changed_code_lines.items():
+        for item in lines:
+            content = item["content"]
+            for original, replacement, rationale in PROBE_REPLACEMENTS:
+                if original not in content:
+                    continue
+                probes.append(
+                    {
+                        "id": f"P{len(probes) + 1}",
+                        "file": rel_path,
+                        "line": item["line"],
+                        "original": original,
+                        "replacement": replacement,
+                        "rationale": rationale,
+                    }
+                )
+                break
+            if len(probes) >= max_probes:
+                return probes
+    return probes
+
+
+def run_counterfactual_probes(
+    repo_copy: Path,
+    changed_code_lines: dict[str, list[dict[str, Any]]],
+) -> dict[str, Any]:
+    probes = generate_counterfactual_probes(changed_code_lines)
+    results: list[dict[str, Any]] = []
+
+    for probe in probes:
+        path = repo_copy / probe["file"]
+        if not path.is_file():
+            results.append({**probe, "applied": False, "survived": None, "error": "file not found"})
+            continue
+
+        original_text = path.read_text(encoding="utf-8")
+        lines = original_text.splitlines(keepends=True)
+        index = probe["line"] - 1
+        if index < 0 or index >= len(lines) or probe["original"] not in lines[index]:
+            results.append(
+                {
+                    **probe,
+                    "applied": False,
+                    "survived": None,
+                    "error": "expected source fragment not found at changed line",
+                }
+            )
+            continue
+
+        lines[index] = lines[index].replace(probe["original"], probe["replacement"], 1)
+        path.write_text("".join(lines), encoding="utf-8")
+        clear_python_bytecode(repo_copy)
+        test_result = run_command([sys.executable, "-m", "pytest", "-q"], repo_copy)
+        path.write_text(original_text, encoding="utf-8")
+        clear_python_bytecode(repo_copy)
+
+        results.append(
+            {
+                **probe,
+                "applied": True,
+                "survived": bool(test_result["passed"]),
+                "test_result": {
+                    "command": test_result["command"],
+                    "returncode": test_result["returncode"],
+                    "passed": test_result["passed"],
+                    "stdout": test_result["stdout"],
+                    "stderr": test_result["stderr"],
+                },
+            }
+        )
+
+    return {
+        "runner_version": RUNNER_VERSION,
+        "summary": {
+            "probes_generated": len(probes),
+            "probes_applied": sum(1 for item in results if item["applied"]),
+            "survivors": sum(1 for item in results if item.get("survived") is True),
+        },
+        "probes": results,
+    }
+
+
+def flatten_assertions(assertion_summary: dict[str, Any]) -> list[dict[str, Any]]:
+    assertions: list[dict[str, Any]] = []
+    for file_item in assertion_summary.get("files", []):
+        for assertion in file_item.get("assertions", []):
+            assertions.append({**assertion, "file": file_item.get("path")})
+    return assertions
+
+
+def flatten_tests(test_summary: dict[str, Any]) -> list[dict[str, Any]]:
+    tests: list[dict[str, Any]] = []
+    for file_item in test_summary.get("files", []):
+        for test in file_item.get("tests", []):
+            tests.append({**test, "file": file_item.get("path")})
+    return tests
+
+
+def claim_expected_numbers(claim: dict[str, Any]) -> set[str]:
+    return set(
+        re.findall(
+            r"\b\d{3}\b",
+            " ".join(
+                str(claim.get(key, ""))
+                for key in ("text", "trigger", "expected_outcome")
+            ),
+        )
+    )
+
+
+def has_issue_test_mismatch(claim: dict[str, Any], assertions: list[dict[str, Any]], tests: list[dict[str, Any]]) -> bool:
+    evidence_text = " ".join(
+        [item.get("source", "") for item in assertions]
+        + [item.get("name", "") for item in tests]
+    ).lower()
+    trigger = str(claim.get("trigger", "")).lower()
+
+    if "expired" in trigger and "expired=true" not in evidence_text.replace(" ", ""):
+        return True
+
+    expected_numbers = claim_expected_numbers(claim)
+    if expected_numbers:
+        assertion_text = " ".join(item.get("source", "") for item in assertions)
+        has_expected_number = any(number in assertion_text for number in expected_numbers)
+        trigger_tokens = token_set(claim.get("trigger")) - {"is", "the", "a", "an", "with"}
+        evidence_tokens = token_set(evidence_text)
+        has_trigger_overlap = bool(trigger_tokens & evidence_tokens)
+        return not has_expected_number and not has_trigger_overlap
+
+    return False
+
+
+def finding(
+    finding_type: str,
+    evidence_refs: list[str],
+    rationale: str,
+) -> dict[str, Any]:
+    return {
+        "type": finding_type,
+        "evidence_refs": sorted(set(evidence_refs)),
+        "rationale": rationale,
+    }
+
+
+def build_findings(
+    case_id: str,
+    claim_doc: dict[str, Any],
+    test_result: dict[str, Any],
+    coverage_map: dict[str, Any],
+    test_summary: dict[str, Any],
+    assertion_summary: dict[str, Any],
+    mock_summary: dict[str, Any],
+    counterfactual_results: dict[str, Any],
+) -> dict[str, Any]:
+    assertions = flatten_assertions(assertion_summary)
+    tests = flatten_tests(test_summary)
+    test_refs = [f"repo/{item['file']}::{item['name']}" for item in tests]
+    weak_assertion_refs = [
+        f"repo/{item['file']}:{item['line']}"
+        for item in assertions
+        if item.get("shape") in WEAK_ASSERTION_SHAPES
+    ]
+    coverage_refs = [
+        f"repo/{file_item['path']}:{line_item['line']}"
+        for file_item in coverage_map.get("files", [])
+        for line_item in file_item.get("changed_lines", [])
+        if not line_item.get("covered")
+    ]
+    mock_refs = [
+        f"repo/{item['file']}:{item['line']}"
+        for item in mock_summary.get("mocks", [])
+        if item.get("is_core_path_candidate")
+    ]
+    survivor_refs = [
+        f"{item['id']}:{item['file']}:{item['line']}"
+        for item in counterfactual_results.get("probes", [])
+        if item.get("survived") is True
+    ]
+
+    claim_results = []
+    for claim in claim_doc.get("claims", []):
+        claim_findings: list[dict[str, Any]] = []
+        mismatch = has_issue_test_mismatch(claim, assertions, tests)
+
+        if not tests or not assertions:
+            claim_findings.append(
+                finding(
+                    "Missing Test Evidence",
+                    [],
+                    "No changed test function and assertion evidence was found for this claim.",
+                )
+            )
+
+        if coverage_refs:
+            claim_findings.append(
+                finding(
+                    "Uncovered Changed Lines",
+                    coverage_refs,
+                    "One or more changed executable lines were not covered by the patched test run.",
+                )
+            )
+
+        if mismatch:
+            claim_findings.append(
+                finding(
+                    "Issue-Test Mismatch",
+                    test_refs,
+                    "The discovered tests exercise a nearby path, but they do not constrain the trigger or outcome named by the claim.",
+                )
+            )
+            claim_findings.append(
+                finding(
+                    "Missing Test Evidence",
+                    test_refs,
+                    "The claim has tests in the PR, but no clear test evidence for the claimed behavior was found.",
+                )
+            )
+
+        if weak_assertion_refs and not mismatch:
+            claim_findings.append(
+                finding(
+                    "Weak Assertion",
+                    weak_assertion_refs,
+                    "At least one related test uses an assertion shape that exercises code without constraining the claimed outcome.",
+                )
+            )
+
+        if mock_refs:
+            claim_findings.append(
+                finding(
+                    "Mocked Core Path",
+                    mock_refs,
+                    "A test mock target matches a changed function or class, so the test may replace the path it should validate.",
+                )
+            )
+
+        if survivor_refs:
+            claim_findings.append(
+                finding(
+                    "Counterfactual Survivor",
+                    survivor_refs,
+                    "A generated counterfactual weakened changed behavior and the patched test suite still passed.",
+                )
+            )
+
+        if not claim_findings and test_result.get("passed"):
+            claim_findings.append(
+                finding(
+                    "Evidence Complete",
+                    test_refs,
+                    "The current evidence chain covers changed lines, includes constraining assertions, and has no v0 mock or probe warning. Human review is still required.",
+                )
+            )
+
+        adequacy = "complete" if all(item["type"] == "Evidence Complete" for item in claim_findings) else "weak"
+        claim_results.append(
+            {
+                "claim_id": claim.get("id"),
+                "adequacy": adequacy,
+                "findings": claim_findings,
+            }
+        )
+
+    return {
+        "case_id": case_id,
+        "runner_version": RUNNER_VERSION,
+        "claims": claim_results,
+    }
+
+
+def compare_findings(case_id: str, generated: dict[str, Any], expected: dict[str, Any]) -> dict[str, Any]:
+    expected_by_claim = {
+        item.get("claim_id"): sorted({finding.get("type") for finding in item.get("findings", [])})
+        for item in expected.get("claims", [])
+    }
+    generated_by_claim = {
+        item.get("claim_id"): sorted({finding.get("type") for finding in item.get("findings", [])})
+        for item in generated.get("claims", [])
+    }
+    claims = []
+    exact_matches = 0
+    for claim_id in sorted(set(expected_by_claim) | set(generated_by_claim)):
+        expected_labels = expected_by_claim.get(claim_id, [])
+        generated_labels = generated_by_claim.get(claim_id, [])
+        missing = sorted(set(expected_labels) - set(generated_labels))
+        extra = sorted(set(generated_labels) - set(expected_labels))
+        exact = not missing and not extra
+        exact_matches += int(exact)
+        claims.append(
+            {
+                "claim_id": claim_id,
+                "expected_labels": expected_labels,
+                "generated_labels": generated_labels,
+                "missing_expected_labels": missing,
+                "extra_generated_labels": extra,
+                "exact_label_match": exact,
+            }
+        )
+
+    return {
+        "case_id": case_id,
+        "runner_version": RUNNER_VERSION,
+        "summary": {
+            "claims_compared": len(claims),
+            "exact_label_matches": exact_matches,
+            "exact_label_match": exact_matches == len(claims),
+        },
+        "claims": claims,
+    }
+
+
 def run_case(case_dir: Path, output_root: Path) -> bool:
     errors = validate_case(case_dir)
     case_output = output_root / case_dir.name
@@ -306,10 +812,24 @@ def run_case(case_dir: Path, output_root: Path) -> bool:
         coverage_xml_result = None
         test_summary = {"runner_version": RUNNER_VERSION, "summary": {"test_count": 0}, "files": []}
         assertion_summary = {"runner_version": RUNNER_VERSION, "summary": {"assertion_count": 0}, "files": []}
+        mock_summary = {
+            "runner_version": RUNNER_VERSION,
+            "summary": {"mock_count": 0, "core_path_candidate_count": 0},
+            "changed_symbols": [],
+            "mocks": [],
+        }
+        counterfactual_results = {
+            "runner_version": RUNNER_VERSION,
+            "summary": {"probes_generated": 0, "probes_applied": 0, "survivors": 0},
+            "probes": [],
+        }
         if apply_result["passed"]:
             test_result, coverage_xml_result = coverage_command(repo_copy, coverage_xml_path)
             test_summary = summarize_tests(repo_copy, test_files)
             assertion_summary = summarize_assertions(repo_copy, test_files)
+            changed_symbols = collect_changed_symbols(repo_copy, changed_code_files, changed_code_lines)
+            mock_summary = summarize_mock_boundaries(repo_copy, test_files, changed_symbols)
+            counterfactual_results = run_counterfactual_probes(repo_copy, changed_code_lines)
 
     write_json(case_output / "test_result.json", test_result or apply_result)
     if coverage_xml_result is not None:
@@ -317,12 +837,33 @@ def run_case(case_dir: Path, output_root: Path) -> bool:
     write_json(case_output / "expected_findings.json", expected_findings)
     write_json(case_output / "test_diff_summary.json", test_summary)
     write_json(case_output / "assertion_summary.json", assertion_summary)
+    write_json(case_output / "mock_boundary_summary.json", mock_summary)
+    write_json(case_output / "counterfactual_results.json", counterfactual_results)
 
     coverage_map = build_coverage_map(case_dir.name, changed_code_lines, case_output / "coverage.xml")
     write_json(case_output / "coverage_map.json", coverage_map)
+    active_test_result = test_result or apply_result
+    generated_findings = build_findings(
+        case_dir.name,
+        claim_doc,
+        active_test_result,
+        coverage_map,
+        test_summary,
+        assertion_summary,
+        mock_summary,
+        counterfactual_results,
+    )
+    write_json(case_output / "findings.json", generated_findings)
+    comparison_summary = compare_findings(case_dir.name, generated_findings, expected_findings)
+    write_json(case_output / "comparison_summary.json", comparison_summary)
 
     claim_rows = []
+    findings_by_claim = {
+        item.get("claim_id"): item
+        for item in generated_findings.get("claims", [])
+    }
     for claim in claim_doc.get("claims", []):
+        claim_finding = findings_by_claim.get(claim.get("id"), {})
         claim_rows.append(
             {
                 "claim_id": claim.get("id"),
@@ -334,7 +875,10 @@ def run_case(case_dir: Path, output_root: Path) -> bool:
                 "test_result": "test_result.json",
                 "coverage_evidence": "coverage_map.json",
                 "ci_evidence": "test_result.json",
-                "adequacy_finding": None,
+                "mock_boundary_evidence": "mock_boundary_summary.json",
+                "counterfactual_evidence": "counterfactual_results.json",
+                "adequacy_finding": claim_finding.get("adequacy"),
+                "findings": claim_finding.get("findings", []),
             }
         )
 
@@ -348,7 +892,7 @@ def run_case(case_dir: Path, output_root: Path) -> bool:
         },
     )
 
-    passed = bool((test_result or apply_result)["passed"])
+    passed = bool(active_test_result["passed"])
     write_json(
         case_output / "case_summary.json",
         {
@@ -370,7 +914,11 @@ def run_case(case_dir: Path, output_root: Path) -> bool:
                 "coverage_map.json",
                 "test_diff_summary.json",
                 "assertion_summary.json",
+                "mock_boundary_summary.json",
+                "counterfactual_results.json",
                 "evidence_chain.json",
+                "findings.json",
+                "comparison_summary.json",
                 "expected_findings.json",
                 "claim_harness_report.md",
             ],
@@ -384,6 +932,10 @@ def run_case(case_dir: Path, output_root: Path) -> bool:
         coverage_map,
         test_summary,
         assertion_summary,
+        mock_summary,
+        counterfactual_results,
+        generated_findings,
+        comparison_summary,
     )
     return passed
 
@@ -396,11 +948,15 @@ def write_report(
     coverage_map: dict[str, Any],
     test_summary: dict[str, Any],
     assertion_summary: dict[str, Any],
+    mock_summary: dict[str, Any],
+    counterfactual_results: dict[str, Any],
+    generated_findings: dict[str, Any],
+    comparison_summary: dict[str, Any],
 ) -> None:
     lines = [
         f"# Claim Harness Case Report: {case_id}",
         "",
-        "This report is generated by the raw artifact runner. It does not make automated adequacy findings yet.",
+        "This report is generated by the curated-case runner. Findings are review support signals, not proof that a PR is correct.",
         "",
         "## Test Result",
         "",
@@ -417,9 +973,46 @@ def write_report(
         f"- Test functions discovered: `{test_summary['summary']['test_count']}`",
         f"- Assertions discovered: `{assertion_summary['summary']['assertion_count']}`",
         "",
-        "## Claims",
+        "## Mock Boundary",
+        "",
+        f"- Mock targets discovered: `{mock_summary['summary']['mock_count']}`",
+        f"- Core-path mock candidates: `{mock_summary['summary']['core_path_candidate_count']}`",
+        "",
+        "## Counterfactual Probes",
+        "",
+        f"- Probes generated: `{counterfactual_results['summary']['probes_generated']}`",
+        f"- Probes applied: `{counterfactual_results['summary']['probes_applied']}`",
+        f"- Survivors: `{counterfactual_results['summary']['survivors']}`",
+        "",
+        "## Findings",
         "",
     ]
+
+    for claim_result in generated_findings.get("claims", []):
+        lines.append(f"### `{claim_result.get('claim_id')}`")
+        lines.append("")
+        lines.append(f"- Adequacy: `{claim_result.get('adequacy')}`")
+        for item in claim_result.get("findings", []):
+            refs = ", ".join(f"`{ref}`" for ref in item.get("evidence_refs", [])) or "`none`"
+            lines.append(f"- `{item.get('type')}`: {item.get('rationale')} Evidence: {refs}.")
+        lines.append("")
+
+    lines.extend(
+        [
+            "## Expected Comparison",
+            "",
+            f"- Exact label match: `{str(comparison_summary['summary']['exact_label_match']).lower()}`",
+            f"- Claims compared: `{comparison_summary['summary']['claims_compared']}`",
+            "",
+        ]
+    )
+
+    lines.extend(
+        [
+        "## Claims",
+        "",
+        ]
+    )
 
     for claim in claim_doc.get("claims", []):
         lines.append(f"- `{claim.get('id')}`: {claim.get('text')}")
@@ -435,7 +1028,11 @@ def write_report(
             "- `coverage_map.json`",
             "- `test_diff_summary.json`",
             "- `assertion_summary.json`",
+            "- `mock_boundary_summary.json`",
+            "- `counterfactual_results.json`",
             "- `evidence_chain.json`",
+            "- `findings.json`",
+            "- `comparison_summary.json`",
             "- `expected_findings.json`",
             "",
         ]

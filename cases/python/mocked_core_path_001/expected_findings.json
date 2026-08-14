@@ -11,6 +11,13 @@
             "repo/tests/test_payment.py::test_process_payment_uses_retry"
           ],
           "rationale": "The test patches payment.retry_payment itself, replacing the function whose retry-limit behavior the claim requires the test to validate."
+        },
+        {
+          "type": "Counterfactual Survivor",
+          "evidence_refs": [
+            "repo/payment.py:1"
+          ],
+          "rationale": "Changing the retry limit back to the weaker value still passes because the new test mocks the retry function instead of exercising it."
         }
       ]
     }

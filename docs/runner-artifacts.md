@@ -1,16 +1,16 @@
 # Runner Artifacts
 
-This document describes the first evidence artifact runner for curated Claim Harness cases. The runner is not the full evidence-adequacy engine. It prepares the inputs that later stages can use for semantic alignment, mock-boundary analysis, counterfactual probes, and baseline comparison.
+This document describes the curated-case runner for Claim Harness. The runner is not a full general-purpose evidence-adequacy engine, but it now executes the first closed loop for benchmark cases: collect evidence, run limited probes, inspect explicit mock boundaries, emit v0 findings, and compare them with expected labels.
 
 ## Purpose
 
-The curated cases already define issues, structured claims, PR-like patches, executable fixtures, metadata, and expected findings. The runner adds a reproducible execution layer:
+The curated cases already define issues, structured claims, PR-like patches, executable fixtures, metadata, and expected findings. The runner adds a reproducible evaluation layer:
 
 ```text
-case fixture -> patched working copy -> pytest + coverage -> evidence artifacts
+case fixture -> patched working copy -> pytest + coverage -> mock/probe checks -> findings
 ```
 
-The first version deliberately stops before automated adequacy judgment. It should preserve evidence, not collapse the case into a single score.
+The runner preserves evidence instead of collapsing the case into a single score. Its findings are deterministic review-support signals for curated Python/pytest cases, not proof that a PR is correct.
 
 ## Command
 
@@ -50,7 +50,11 @@ artifacts/
     coverage_map.json
     test_diff_summary.json
     assertion_summary.json
+    mock_boundary_summary.json
+    counterfactual_results.json
     evidence_chain.json
+    findings.json
+    comparison_summary.json
     expected_findings.json
     claim_harness_report.md
 ```
@@ -79,9 +83,39 @@ Lists discovered pytest test functions in changed test files.
 
 Lists Python `assert` statements in changed test files and records a simple assertion shape such as comparison, truthiness check, or existence check.
 
+### `mock_boundary_summary.json`
+
+Lists explicit Python mock targets found in changed test files. The v0 detector recognizes common `unittest.mock.patch`, `patch.object`, `monkeypatch.setattr`, and `mocker.patch`-style calls, then marks mocks whose target matches a changed function or class as core-path candidates.
+
+Mocks are not treated as inherently bad. The suspicious case is when the mock replaces the same path the claim requires the test to validate.
+
+### `counterfactual_results.json`
+
+Records limited deterministic probes generated from changed code lines. The v0 probe templates weaken common behavior signals such as HTTP error returns, boolean returns, and simple retry limits, then rerun the patched pytest suite.
+
+A surviving probe means the weakened behavior still passed the tests. This can support a `Counterfactual Survivor` finding.
+
 ### `evidence_chain.json`
 
-Connects each structured claim to changed code files, changed code lines, related test files, test-result evidence, and coverage-map evidence. Automated adequacy findings are intentionally left empty in this version.
+Connects each structured claim to changed code files, changed code lines, related test files, test-result evidence, coverage-map evidence, mock-boundary evidence, counterfactual evidence, and generated adequacy findings.
+
+### `findings.json`
+
+Contains v0 generated findings by claim. The current deterministic rules cover:
+
+- `Evidence Complete`;
+- `Missing Test Evidence`;
+- `Uncovered Changed Lines`;
+- `Weak Assertion`;
+- `Issue-Test Mismatch`;
+- `Mocked Core Path`;
+- `Counterfactual Survivor`.
+
+The runner intentionally keeps the rationale and evidence references visible so reviewers can challenge the finding.
+
+### `comparison_summary.json`
+
+Compares generated finding labels with `expected_findings.json` for each claim. It reports exact label matches, missing expected labels, and extra generated labels. This artifact supports benchmark iteration; it does not fail the run by itself.
 
 ### `expected_findings.json`
 
@@ -95,11 +129,11 @@ Provides a small human-readable report for the case. It summarizes the claims an
 
 This runner does not:
 
-- produce `findings.json`;
-- infer claim adequacy;
+- evaluate arbitrary external repositories safely;
 - call an LLM;
-- classify mock boundaries;
-- generate counterfactual probes;
-- score baselines.
+- perform per-test coverage mapping;
+- run broad semantic claim alignment;
+- classify CI scope weakening from real CI configuration;
+- score baselines end to end.
 
-Those stages should build on the raw artifacts rather than replace them.
+Those stages should build on these artifacts rather than replace them.

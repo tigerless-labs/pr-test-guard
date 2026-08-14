@@ -16,11 +16,11 @@ This repository now contains:
 - Real PR input rules in `docs/real-pr-input.md`.
 - Four executable Python/pytest micro-PR cases under `cases/python/`.
 - A lightweight structural and executability validator in `scripts/validate_cases.py`.
-- An evidence artifact runner in `scripts/run_case.py`.
+- A curated-case runner in `scripts/run_case.py` that emits evidence artifacts, v0 findings, mock-boundary summaries, limited counterfactual probe results, and expected-label comparisons.
 - Optional LLM-assisted claim candidate extraction in `scripts/extract_claim_candidates.py`.
 - A dogfood real PR input bundle under `examples/real-pr-bundles/`.
 
-There is still no automated adequacy finding engine, automated real PR ingestion client, per-test coverage mapping, automated mock analysis, counterfactual generator, or end-to-end baseline implementation.
+There is still no general-purpose adequacy runner for arbitrary repositories, automated real PR ingestion client, per-test coverage mapping, broad semantic alignment, broad mock analysis, broad counterfactual generator, or end-to-end baseline implementation.
 
 ## Ecosystem Position
 
@@ -77,7 +77,7 @@ The stage also defines annotation and benchmark protocols so ground truth is fix
 
 ### Stage 2: Runner Skeleton
 
-**Status: evidence artifact runner added.**
+**Status: evidence and v0 findings runner added.**
 
 Maintain a lightweight runner that can:
 
@@ -86,9 +86,11 @@ Maintain a lightweight runner that can:
 - execute pytest;
 - collect raw test results;
 - collect line coverage for changed code;
-- preserve raw artifacts rather than immediately compressing them into a score.
+- preserve raw artifacts rather than immediately compressing them into a score;
+- emit deterministic v0 findings for the initial curated case families;
+- compare generated labels with expected labels.
 
-The runner emits test results, coverage XML, a changed-line coverage map, test/assertion summaries, and an evidence chain. Per-test coverage remains a follow-up.
+The runner emits test results, coverage XML, a changed-line coverage map, test/assertion summaries, mock-boundary summaries, limited counterfactual probe results, an evidence chain, generated findings, expected-label comparison, and a Markdown report. Per-test coverage remains a follow-up.
 
 ### Stage 3: Real PR Input Bundles
 
@@ -121,12 +123,16 @@ Emit the first machine-readable `evidence_chain.json`.
 
 ### Stage 5: Initial Automated Findings
 
-Implement the first deterministic or mostly deterministic findings:
+**Status: v0 deterministic findings added for curated cases.**
+
+Maintain and improve the first deterministic or mostly deterministic findings:
 
 - `Missing Test Evidence`;
 - `Uncovered Changed Lines`;
 - basic assertion extraction;
-- obvious weak-assertion patterns.
+- obvious weak-assertion patterns;
+- explicit Python mock-boundary candidates;
+- limited counterfactual survivors.
 
 Keep the rules auditable and report evidence references instead of a single opaque score.
 
@@ -143,22 +149,26 @@ The LLM should propose or interpret semantics; structural and runtime artifacts 
 
 ### Stage 7: Mock Boundary Analysis
 
-Start with explicit Python mock patterns:
+**Status: explicit Python mock target detection added for curated cases.**
+
+Continue from explicit Python mock patterns:
 
 - `unittest.mock.patch`;
 - `pytest` monkeypatch;
 - common `mocker.patch` forms.
 
-First detect mock targets structurally. Then determine whether the mock merely isolates a dependency or replaces the behavior named by the claim.
+The first version detects mock targets structurally and marks targets that match changed functions or classes. The next step is better claim-relative classification: determine whether the mock merely isolates a dependency or replaces the behavior named by the claim.
 
 ### Stage 8: Controlled Counterfactual Probes
 
-Introduce reproducible claim-guided probes.
+**Status: limited deterministic probe templates added for curated cases.**
+
+Continue improving reproducible claim-guided probes.
 
 Progress from:
 
-1. manually authored counterfactual patches in curated cases;
-2. simple rule/AST-based mutations;
+1. simple rule/AST-based mutations;
+2. manually reviewed counterfactual patches in curated cases;
 3. optional LLM-guided mutation proposals validated and executed by the harness.
 
 A `Counterfactual Survivor` requires an actual rerun result, not an LLM prediction.

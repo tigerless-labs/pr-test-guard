@@ -173,16 +173,16 @@ A future runner or case evaluator should emit artifacts that preserve the eviden
 - `mock_boundary_summary.json`: mocks, stubs, patches, and their relationship to the claimed behavior path.
 - `claim_harness_report.md`: human-readable review report summarizing claims, evidence, and findings.
 
-The current curated-case validator only checks case structure and optional fixture executability. It is not the Claim Harness runner.
+The current curated-case runner emits this initial output shape for Python/pytest cases. It remains intentionally narrow and should be treated as a reproducible benchmark loop, not a general repository evaluator.
 
 ## Non-goals for This Stage
 
-- No Claim Harness runner yet.
+- No general-purpose Claim Harness runner for arbitrary repositories yet.
 - No CLI yet.
 - No automatic claim extraction yet.
 - No LLM integration yet.
-- No automatic counterfactual generation yet.
-- No automatic mock-boundary classification yet.
-- No GitHub Action integration yet.
+- No broad automatic counterfactual generation beyond limited deterministic templates.
+- No broad automatic mock-boundary classification beyond explicit Python mock targets.
+- No reusable GitHub Action for external PR review yet.
 - No claim that Claim Harness proves PR correctness.
 - No broad multi-language support yet.

@@ -16,6 +16,20 @@
           "type": "Missing Test Evidence",
           "evidence_refs": [],
           "rationale": "No test in the submitted fixture checks the expired-token behavior required by the claim."
+        },
+        {
+          "type": "Uncovered Changed Lines",
+          "evidence_refs": [
+            "repo/auth.py:11"
+          ],
+          "rationale": "The expired-token branch introduced by the PR is not executed by the patched test run."
+        },
+        {
+          "type": "Counterfactual Survivor",
+          "evidence_refs": [
+            "repo/auth.py:11"
+          ],
+          "rationale": "Weakening the expired-token return still passes because the tests only cover valid-token behavior."
         }
       ]
     }
