@@ -1,12 +1,12 @@
 {
-  "bundle_id": "claim-harness-pr-5",
+  "bundle_id": "normalized-pr-bundle-001",
   "bundle_type": "real_pr_ingestion_smoke",
-  "repository": "tigerless-labs/claim-harness",
+  "repository": "example-org/example-service",
   "provider": "github",
-  "pr_number": 5,
-  "pr_url": "https://github.com/tigerless-labs/claim-harness/pull/5",
+  "pr_number": 17,
+  "pr_url": "https://example.invalid/example-org/example-service/pull/17",
   "base_ref": "main",
-  "head_ref": "runner/evidence-artifacts-v0",
+  "head_ref": "agent/empty-password-guard",
   "artifacts": {
     "pr_metadata": "pr.json",
     "pr_diff": "pr.diff",
@@ -17,6 +17,6 @@
   "ground_truth": {
     "is_benchmark_case": false,
     "has_independent_labels": false,
-    "notes": "This bundle validates real PR artifact organization only."
+    "notes": "This synthetic bundle validates normalized real-PR artifact organization only."
   }
 }

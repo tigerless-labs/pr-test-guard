@@ -25,6 +25,8 @@ Future runner executions should treat the PR and its review artifacts as the inp
 
 Coverage is one input to the evidence chain. It should not be treated as the final adequacy answer.
 
+Different AI agents may provide different PR surfaces. Claim Harness should normalize those surfaces before evaluation rather than binding the evidence chain to one agent's PR schema.
+
 ## Evidence Chain
 
 Claim Harness should connect artifacts through a claim-centered chain:
@@ -173,7 +175,7 @@ A future runner or case evaluator should emit artifacts that preserve the eviden
 - `mock_boundary_summary.json`: mocks, stubs, patches, and their relationship to the claimed behavior path.
 - `claim_harness_report.md`: human-readable review report summarizing claims, evidence, and findings.
 
-The current curated-case runner emits this initial output shape for Python/pytest cases. It remains intentionally narrow and should be treated as a reproducible benchmark loop, not a general repository evaluator.
+The current curated-case runner emits this initial output shape for Python/pytest cases through both legacy scripts and the `python -m claim_harness` entrypoint. It remains intentionally narrow and should be treated as a reproducible benchmark loop, not a general repository evaluator.
 
 ## Non-goals for This Stage
 

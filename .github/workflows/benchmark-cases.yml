@@ -21,7 +21,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install test dependencies
-        run: python -m pip install -r requirements.txt
+        run: python -m pip install -e .
 
       - name: Validate case structure
         run: python scripts/validate_cases.py
@@ -34,3 +34,15 @@ jobs:
 
       - name: Validate real PR bundles
         run: python scripts/validate_real_pr_bundles.py
+
+      - name: Check module entrypoint
+        run: python -m claim_harness --version
+
+      - name: Validate cases through module entrypoint
+        run: python -m claim_harness validate-cases
+
+      - name: Generate artifacts through module entrypoint
+        run: python -m claim_harness run-cases --case weak_assertion_001 --output-dir /tmp/claim-harness-module-artifacts
+
+      - name: Validate real PR bundles through module entrypoint
+        run: python -m claim_harness validate-real-pr-bundles

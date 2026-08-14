@@ -17,21 +17,23 @@ The runner preserves evidence instead of collapsing the case into a single score
 Run all curated Python cases:
 
 ```bash
-python3 -m pip install -r requirements.txt
-python3 scripts/run_case.py
+python3 -m pip install -e .
+python3 -m claim_harness run-cases
 ```
 
 Run one case:
 
 ```bash
-python3 scripts/run_case.py --case weak_assertion_001
+python3 -m claim_harness run-cases --case weak_assertion_001
 ```
 
 Write artifacts somewhere other than `artifacts/`:
 
 ```bash
-python3 scripts/run_case.py --output-dir /tmp/claim-harness-artifacts
+python3 -m claim_harness run-cases --output-dir /tmp/claim-harness-artifacts
 ```
+
+The legacy script entrypoint remains available as `python3 scripts/run_case.py`.
 
 The runner requires `git` and `pytest` in the local environment.
 It also requires `coverage` for coverage artifacts.
@@ -89,11 +91,22 @@ Lists explicit Python mock targets found in changed test files. The v0 detector 
 
 Mocks are not treated as inherently bad. The suspicious case is when the mock replaces the same path the claim requires the test to validate.
 
+This artifact should be read as a candidate boundary map, not a complete semantic judgment. Determining whether a mock isolates a dependency or replaces the claim's core behavior may require claim-relative analysis or human review.
+
 ### `counterfactual_results.json`
 
 Records limited deterministic probes generated from changed code lines. The v0 probe templates weaken common behavior signals such as HTTP error returns, boolean returns, and simple retry limits, then rerun the patched pytest suite.
 
 A surviving probe means the weakened behavior still passed the tests. This can support a `Counterfactual Survivor` finding.
+
+Current templates include:
+
+- HTTP status weakening for common failure statuses such as `400`, `401`, `403`, `404`, `422`, and `500`;
+- boolean return flips;
+- simple retry-limit rollback;
+- basic inclusive-boundary comparison weakening.
+
+The probe runner clears Python bytecode caches around each mutation so reruns execute the changed source, not stale `.pyc` files.
 
 ### `evidence_chain.json`
 
@@ -137,3 +150,7 @@ This runner does not:
 - score baselines end to end.
 
 Those stages should build on these artifacts rather than replace them.
+
+## Stability
+
+The artifact names above are the public v0 contract for the curated-case runner. Field-level schemas may still evolve while the benchmark suite is small, but changes should preserve reviewability: every generated finding should keep evidence references and a rationale that can be inspected without trusting an opaque score.

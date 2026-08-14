@@ -1,0 +1,23 @@
+diff --git a/service/auth.py b/service/auth.py
+index 5aa7a01..a1f4e77 100644
+--- a/service/auth.py
++++ b/service/auth.py
+@@ -8,4 +8,6 @@ class Response:
+def create_user(password: str, repository: UserRepository) -> Response:
++    if not password:
++        return Response(status_code=400)
+     repository.add(password)
+     return Response(status_code=201)
+diff --git a/tests/test_auth.py b/tests/test_auth.py
+index 64d78df..fd9cb0e 100644
+--- a/tests/test_auth.py
++++ b/tests/test_auth.py
+@@ -7,3 +7,9 @@ def test_valid_password_creates_user():
+     assert response.status_code == 201
+     assert repository.count() == 1
++
++def test_empty_password_is_rejected():
++    repository = UserRepository()
++    response = create_user("", repository)
++
++    assert response.status_code == 400
