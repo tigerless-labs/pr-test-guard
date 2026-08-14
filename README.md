@@ -97,13 +97,13 @@ python3 scripts/validate_cases.py --run
 
 The `--run` mode requires `git` and `pytest` in the local environment.
 
-Generate raw evidence artifacts for the curated cases:
+Generate evidence artifacts and v0 adequacy findings for the curated cases:
 
 ```bash
 python3 scripts/run_case.py
 ```
 
-The runner writes per-case artifacts under `artifacts/`, including test results, coverage evidence, test/assertion summaries, an evidence chain, expected findings, and a short Markdown report. It does not make automated adequacy findings yet.
+The runner writes per-case artifacts under `artifacts/`, including test results, coverage evidence, test/assertion summaries, mock-boundary summaries, limited counterfactual probe results, an evidence chain, generated findings, expected-finding comparison, and a short Markdown report.
 
 Validate real PR input bundles:
 
@@ -127,29 +127,28 @@ This optional script requires `requirements-llm.txt`. It emits candidate claims 
 - [Real PR Input Bundles](docs/real-pr-input.md): how real PR artifacts and LLM-assisted claim candidates should be organized.
 - [Annotation Guidelines](docs/annotation-guidelines.md): how human ground truth should be created without using Claim Harness output.
 - [Benchmark Protocol](docs/benchmark-protocol.md): how coverage, heuristic, LLM, and Claim Harness methods should be compared.
-- [Runner Artifacts](docs/runner-artifacts.md): what the first raw artifact runner emits for curated cases.
+- [Runner Artifacts](docs/runner-artifacts.md): what the curated-case runner emits for evidence, findings, mock boundaries, and probes.
 - [Roadmap](docs/roadmap.md): the MVP boundary and staged evolution.
 
 ## Current Scope
 
-This repository now contains documentation plus the first executable benchmark fixtures, a lightweight case validator, an evidence artifact runner, and a dogfood real PR input bundle.
+This repository now contains documentation plus the first executable benchmark fixtures, a lightweight case validator, a curated-case evidence runner with v0 deterministic findings, and a dogfood real PR input bundle.
 
 It still does **not** include:
 
-- a full Claim Harness adequacy runner;
-- automated adequacy findings;
+- a full general-purpose Claim Harness adequacy runner for arbitrary repositories;
 - default automated claim extraction;
 - automated real PR ingestion;
 - per-test coverage mapping;
 - automated LLM semantic reasoning;
-- automated mock-boundary classification;
-- counterfactual generation;
-- GitHub Action integration.
+- broad mock-boundary classification beyond explicit Python mock patterns;
+- broad counterfactual generation beyond limited deterministic probe templates;
+- a reusable GitHub Action for external PR review.
 
-The next implementation stage is a lightweight runner that can execute tests, collect coverage, and preserve raw evidence for later claim-centered analysis.
+The next implementation stage is to make the runner callable from other projects with a stable artifact contract and clearer packaging boundaries.
 
 ## Later Direction
 
-Future work can add the runner, stable finding schemas, baseline implementations, per-test coverage, semantic claim alignment, mock-boundary analysis, controlled counterfactual probes, and real-world agentic PR evaluation.
+Future work can add stable finding schemas, baseline implementations, per-test coverage, semantic claim alignment, broader mock-boundary analysis, broader controlled counterfactual probes, and real-world agentic PR evaluation.
 
 The goal is to make evidence-adequacy review repeatable without pretending that any automated harness can prove a PR correct.
