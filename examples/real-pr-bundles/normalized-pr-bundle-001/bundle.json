@@ -14,9 +14,8 @@
     "claim_candidates": "claim_candidates.json",
     "missing_artifacts": "missing_artifacts.json"
   },
-  "ground_truth": {
-    "is_benchmark_case": false,
-    "has_independent_labels": false,
+  "validation": {
+    "purpose": "real_pr_input_smoke",
     "notes": "This synthetic bundle validates normalized real-PR artifact organization only."
   }
 }

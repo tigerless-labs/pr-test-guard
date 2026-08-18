@@ -1,4 +1,4 @@
-"""Claim Harness public package surface."""
+"""PR Test Guard public package surface."""
 
 from .version import __version__
 

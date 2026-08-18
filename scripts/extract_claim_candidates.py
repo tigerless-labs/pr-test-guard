@@ -110,7 +110,7 @@ def extract_with_openai(bundle_dir: Path, model: str, max_diff_chars: int) -> di
             {
                 "role": "system",
                 "content": (
-                    "You extract reviewable change-claim candidates for Claim Harness. "
+                    "You extract reviewable change-claim candidates for PR Test Guard. "
                     "You are not an adequacy judge."
                 ),
             },

@@ -1,4 +1,4 @@
-name: Benchmark Cases
+name: CI
 
 on:
   pull_request:
@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  validate-cases:
+  regression-checks:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,26 +23,26 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install -e .
 
-      - name: Validate case structure
+      - name: Validate regression fixtures
         run: python scripts/validate_cases.py
 
-      - name: Run executable cases
+      - name: Run executable regression fixtures
         run: python scripts/validate_cases.py --run
 
-      - name: Generate runner artifacts
-        run: python scripts/run_case.py --output-dir /tmp/claim-harness-artifacts
+      - name: Generate rule-analysis artifacts
+        run: python scripts/run_case.py --output-dir /tmp/pr-test-guard-artifacts
 
-      - name: Validate real PR bundles
+      - name: Validate real PR input bundles
         run: python scripts/validate_real_pr_bundles.py
 
       - name: Check module entrypoint
-        run: python -m claim_harness --version
+        run: python -m pr_test_guard --version
 
-      - name: Validate cases through module entrypoint
-        run: python -m claim_harness validate-cases
+      - name: Validate fixtures through module entrypoint
+        run: python -m pr_test_guard validate-cases
 
       - name: Generate artifacts through module entrypoint
-        run: python -m claim_harness run-cases --case weak_assertion_001 --output-dir /tmp/claim-harness-module-artifacts
+        run: python -m pr_test_guard run-cases --case weak_assertion_001 --output-dir /tmp/pr-test-guard-module-artifacts
 
       - name: Validate real PR bundles through module entrypoint
-        run: python -m claim_harness validate-real-pr-bundles
+        run: python -m pr_test_guard validate-real-pr-bundles

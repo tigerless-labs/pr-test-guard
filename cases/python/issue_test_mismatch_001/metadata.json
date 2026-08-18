@@ -2,7 +2,7 @@
   "language": "python",
   "test_framework": "pytest",
   "fixture_kind": "executable_micro_pr",
-  "ground_truth_source": "controlled_construction",
   "case_id": "issue_test_mismatch_001",
-  "case_family": "Issue-Test Mismatch"
+  "case_family": "Issue-Test Mismatch",
+  "expected_output_source": "controlled_construction"
 }

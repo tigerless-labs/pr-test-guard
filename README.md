@@ -1,100 +1,103 @@
-<h1 align="center">Claim Harness</h1>
+<h1 align="center">PR Test Guard</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/release-v0.1.0-brightgreen.svg" alt="release v0.1.0" /> <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+" /> <img src="https://img.shields.io/badge/output-JSON%20%7C%20Markdown-lightgrey.svg" alt="JSON and Markdown output" /> <img src="https://img.shields.io/badge/scope-curated%20Python%2Fpytest%20cases-yellow.svg" alt="curated Python pytest cases" /> <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="license MIT" />
+  <img src="https://img.shields.io/badge/release-v0.1.0-brightgreen.svg" alt="release v0.1.0" /> <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+" /> <img src="https://img.shields.io/badge/output-JSON%20%7C%20Markdown-lightgrey.svg" alt="JSON and Markdown output" /> <img src="https://img.shields.io/badge/scope-Python%2Fpytest-yellow.svg" alt="Python pytest scope" /> <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="license MIT" />
 </p>
 
-**Evaluate whether agentic PRs have enough test evidence to support their change claims - not just covered lines or passing CI.**
+**Lightweight, rule-based test-quality checks for pull requests.**
 
-Claim Harness is an early evidence-adequacy runner for AI-generated pull requests. It helps reviewers inspect whether a PR's tests support the behavior the PR claims to change, especially when the PR looks tested but the evidence is weak, mismatched, over-mocked, or only superficially covered.
+PR Test Guard helps reviewers spot PRs that look tested but still carry obvious test-quality risks: missing test changes, uncovered changed code, weak assertions, mismatched tests, or mocks that may replace the behavior under review.
 
-The current release provides a runnable curated-case loop, deterministic v0 findings, explicit Python mock-boundary candidates, limited counterfactual probes, normalized real-PR input bundles, and an optional LLM-assisted claim-candidate script. It does not prove a PR correct and does not replace human review.
+The project is CLI-first and designed to fit naturally into CI. Its default product direction is advisory: surface actionable signals for reviewers, and let each repository decide which rules, if any, should become merge-blocking policy. Version `0.1.0` keeps the existing executable regression-fixture runner while the direct PR-checking CLI and reusable GitHub Action are being built.
 
 | | |
 | --- | --- |
-| **Claim-centered evidence** | Connects structured change claims to changed code, tests, coverage, mock boundaries, probe results, and findings. |
-| **Coverage as evidence, not the verdict** | Changed-line coverage is preserved and compared, but weak assertions and mismatched tests can still be reported. |
-| **Executed counterfactual probes** | Limited deterministic probes weaken common behavior signals and rerun pytest before reporting survivors. |
-| **Mock-boundary candidates** | Explicit Python mock targets are mapped back to changed functions/classes to surface possible core-path replacement. |
-| **Agent-agnostic input shape** | Real PR artifacts are normalized into bundles so the core runner is not tied to one AI agent's PR style. |
-| **Optional LLM claim extraction** | LLM use is limited to candidate claims by default, not adequacy judgment. |
+| **PR-focused** | Starts from a pull-request diff and the tests around that change instead of trying to judge an entire repository. |
+| **Rule-based by default** | Uses deterministic, inspectable signals before optional semantic assistance. |
+| **Coverage is one signal, not the verdict** | Changed-line coverage matters, but covered code can still be backed by weak or mismatched tests. |
+| **Review signals, not correctness claims** | Findings highlight where a reviewer should look; they do not prove that a PR is correct or incorrect. |
+| **CLI-first, CI-friendly** | The core is intended to run locally or in any CI environment, with GitHub Actions as the first automated integration target. |
+| **No model required on the default path** | The current core runner and rule checks do not require an API key or an LLM. |
 
 ## Quick Start
 
-Clone the repository and run the curated Python/pytest cases. Version `0.1.0`
+Clone the repository and run the current Python/pytest regression fixtures. Version `0.1.0`
 is intended for source-tree use and is not published to PyPI yet:
 
 ```bash
 python3 -m pip install -e .
-python3 -m claim_harness --version
-python3 -m claim_harness validate-cases
-python3 -m claim_harness validate-cases --run
-python3 -m claim_harness run-cases --output-dir /tmp/claim-harness-artifacts
+python3 -m pr_test_guard --version
+python3 -m pr_test_guard validate-cases
+python3 -m pr_test_guard validate-cases --run
+python3 -m pr_test_guard run-cases --output-dir /tmp/pr-test-guard-artifacts
 ```
 
 The same commands are available through the console script after editable install:
 
 ```bash
-claim-harness validate-cases
-claim-harness run-cases --case weak_assertion_001 --output-dir /tmp/claim-harness-artifacts
+pr-test-guard validate-cases
+pr-test-guard run-cases --case weak_assertion_001 --output-dir /tmp/pr-test-guard-artifacts
 ```
 
-The legacy script entrypoints remain supported:
+The script entrypoints remain supported:
 
 ```bash
 python3 scripts/validate_cases.py
 python3 scripts/validate_cases.py --run
-python3 scripts/run_case.py --output-dir /tmp/claim-harness-artifacts
+python3 scripts/run_case.py --output-dir /tmp/pr-test-guard-artifacts
 ```
 
 Validate the synthetic normalized real-PR input bundle:
 
 ```bash
-python3 -m claim_harness validate-real-pr-bundles
+python3 -m pr_test_guard validate-real-pr-bundles
 ```
 
 ## What It Evaluates
 
-Claim Harness is centered on this review frame:
+PR Test Guard is centered on a simple review question:
 
 ```text
-change claim -> evidence chain -> counterfactual probe -> mock boundary -> adequacy findings
+PR change -> related tests -> runtime/static evidence -> test-quality signals
 ```
 
-It aims to connect:
+It currently models evidence that can help answer:
 
-- **Change claims:** what the PR says it changed, from the issue, task text, PR body, commit context, or diff.
-- **Evidence chains:** which tests, assertions, coverage spans, and test runs support each claim.
-- **Counterfactual probes:** whether tests fail when a claimed behavior is weakened by a controlled mutation.
-- **Mock boundaries:** whether tests replace the behavior path they are supposed to validate.
-- **Adequacy findings:** reviewable conclusions about missing, weak, mismatched, or relatively complete evidence.
+- **Was behavior changed without clear test evidence?**
+- **Are changed executable lines actually covered?**
+- **Do the relevant assertions constrain the behavior they appear to test?**
+- **Do tests exercise a different path than the change they are meant to support?**
+- **Do mocks or patches appear to replace the behavior under review?**
+- **Can a limited counterfactual change survive the attached tests?**
 
-Initial finding types:
+Initial finding types are kept from the original research prototype because they exercise useful PR-test failure modes:
 
 | Finding | Meaning |
 | --- | --- |
-| `Missing Test Evidence` | A claim has no clear test evidence attached. |
-| `Uncovered Changed Lines` | Changed behavior is not executed by the relevant tests. |
-| `Weak Assertion` | Code is executed, but assertions do not constrain the claimed behavior. |
-| `Issue-Test Mismatch` | Tests target a different behavior than the issue or claim describes. |
-| `Suspicious Fix Without Test` | A behavioral fix appears in the diff without a corresponding test change or existing test link. |
-| `Mocked Core Path` | A test mock or stub appears to replace the path that should provide evidence. |
-| `CI Scope Weakening` | The tested CI scope appears narrower than the PR's affected behavior. |
-| `Counterfactual Survivor` | A weakened or removed behavior still passes the attached tests. |
-| `Evidence Complete` | The current evidence chain is relatively complete; this does not mean the PR is correct. |
+| `Missing Test Evidence` | No clear test evidence is attached to a behavior-changing PR path. |
+| `Uncovered Changed Lines` | Relevant changed executable code is not exercised by the available tests. |
+| `Weak Assertion` | Code is exercised, but the assertion may not meaningfully constrain the expected outcome. |
+| `Issue-Test Mismatch` | The available test appears to validate a materially different behavior from the change intent. |
+| `Suspicious Fix Without Test` | A behavioral change appears without a corresponding test change or identifiable existing test link. |
+| `Mocked Core Path` | A mock or stub appears to replace the behavior path that should provide evidence. |
+| `CI Scope Weakening` | CI or test configuration appears to narrow validation around affected behavior. |
+| `Counterfactual Survivor` | A limited controlled weakening still passes the attached tests. |
+| `Evidence Complete` | The current fixture has no targeted evidence gap; this is not a correctness certificate. |
+
+These are review-oriented signals. Heuristic findings such as `Weak Assertion` or `Mocked Core Path` should be advisory by default rather than automatic reasons to block a merge.
 
 ## Current Runner
 
-The repository ships four executable Python/pytest micro-PR cases under `cases/python/`:
+The repository ships four executable Python/pytest regression fixtures under `cases/python/`:
 
 - `weak_assertion_001`
 - `issue_test_mismatch_001`
 - `mocked_core_path_001`
 - `evidence_complete_001`
 
-Each case includes an issue, structured claim, executable base fixture, PR-like patch, metadata, and human-authored expected findings.
+Each fixture includes a small PR-like change, executable code, tests, change intent, and expected rule output. The expected output is used for regression testing of the tool itself; it is not presented as a public benchmark or a human-labeled comparison dataset.
 
-For each case, the runner writes:
+For each fixture, the runner writes:
 
 ```text
 artifacts/<case_id>/
@@ -111,19 +114,19 @@ artifacts/<case_id>/
   findings.json
   comparison_summary.json
   expected_findings.json
-  claim_harness_report.md
+  pr_test_guard_report.md
 ```
 
-`comparison_summary.json` compares generated finding labels with the human-authored expected labels. It is useful for benchmark iteration, but it is not a claim that the harness has solved general PR review.
+`comparison_summary.json` is a regression check against the fixture's expected signals. It exists to catch rule regressions while the implementation evolves, not to establish leaderboard-style benchmark performance.
 
 ## Real PR Bundles
 
-Agentic PRs vary by source: one agent may write a detailed PR body, another may rely on an issue, a task prompt, commits, or comments. Claim Harness keeps those differences outside the core runner.
+PR Test Guard is intended to move from controlled fixtures to real pull requests without tying the core analysis to one agent or hosting workflow.
 
-The intended path is:
+The current normalized input prototype is:
 
 ```text
-agent-specific PR artifacts -> normalized real PR bundle -> claim candidates -> evidence artifacts -> findings
+PR metadata + diff + test/CI artifacts -> normalized PR bundle -> rule evidence -> findings
 ```
 
 A normalized bundle can include:
@@ -134,22 +137,24 @@ A normalized bundle can include:
 - `ci-summary.md`
 - `test-result.json` or `ci.log`
 - `coverage.xml` or `lcov.info`
-- `claim_candidates.json`
+- optional change-intent candidates
 - `missing_artifacts.json`
 
-Missing artifacts should be recorded explicitly instead of silently ignored. See [Real PR Input Bundles](docs/real-pr-input.md).
+Missing artifacts should be recorded explicitly instead of silently treated as evidence. See [Real PR Input](docs/real-pr-input.md).
+
+The long-term integration is intentionally lighter than a hosted service: keep the analysis core callable from the CLI, then wrap it in a GitHub Action so pull requests can receive automatic advisory results in CI.
 
 ## Mock and Probe Boundaries
 
-The current mock detector is structural. It recognizes explicit Python patterns such as `patch`, `patch.object`, `monkeypatch.setattr`, and `mocker.patch`, then checks whether the target matches a changed function or class. That produces a mock-boundary candidate; it does not prove the mock is wrong.
+The current mock detector is structural. It recognizes explicit Python patterns such as `patch`, `patch.object`, `monkeypatch.setattr`, and `mocker.patch`, then checks whether the target matches a changed function or class. That produces a **candidate signal**; it does not prove that the mock is wrong.
 
-The current probe generator is deterministic and limited. It covers common status-code weakening, boolean return flips, simple retry-limit rollback, and basic inclusive-boundary comparison weakening. A `Counterfactual Survivor` requires an actual pytest rerun result.
+The current counterfactual probe generator is also deliberately limited. It covers common status-code weakening, boolean return flips, simple retry-limit rollback, and basic inclusive-boundary comparison weakening. A `Counterfactual Survivor` requires an actual pytest rerun result.
 
-LLM-based semantic assessment is intentionally not on the default path. A later optional layer can help classify whether a mock isolates a dependency or replaces the claim's core behavior, but structural artifacts and executed tests should remain the primary evidence.
+These deeper signals are retained from the original prototype, but they are not required to define the product. The lightweight public direction is to keep deterministic rules understandable, cheap to run, and safe to treat as advisory unless a repository explicitly opts into enforcement.
 
 ## Optional LLM Claim Candidates
 
-Install the optional dependency and provide an API key only if you want LLM-assisted claim extraction:
+The default path is rule-based and does not require an LLM. The existing optional helper for extracting change-intent candidates from a normalized PR bundle is retained as an experimental aid:
 
 ```bash
 python3 -m pip install -e ".[llm]"
@@ -157,45 +162,45 @@ OPENAI_API_KEY=... OPENAI_MODEL=... python3 scripts/extract_claim_candidates.py 
   examples/real-pr-bundles/normalized-pr-bundle-001
 ```
 
-This emits candidate claims only. It must not create `Evidence Complete`, judge adequacy, or replace test execution, coverage, CI evidence, mock-boundary analysis, or counterfactual probes.
+This helper only proposes candidate change intent. It must not turn heuristic signals into correctness judgments, decide whether a PR may merge, or replace test execution, coverage, CI evidence, or deterministic rule output.
 
 ## What It Is Not
 
+- Not a replacement for the repository's test suite.
 - Not a generic coverage reporter.
-- Not a SWE-bench clone.
-- Not a test generation agent.
+- Not a full code-review agent.
+- Not a benchmark or leaderboard project.
 - Not a pure LLM judge.
-- Not a mutation-testing framework.
-- Not a replacement for human review.
+- Not a correctness certificate.
+- Not a mandatory merge gate by default.
 
-SWE-bench-style evaluations ask whether an agent can solve an issue. Patch coverage tools ask whether changed lines were executed. Claim Harness starts later in the lifecycle: an agent has already submitted a PR, and a reviewer needs to inspect whether the PR's tests support its claims.
+Patch-coverage tools answer whether changed lines were executed. PR Test Guard keeps that useful signal, then looks for additional test-quality risks around the same PR. Its goal is not to make the final merge decision; it is to give reviewers a fast, inspectable reason to look more closely where test evidence appears weak.
 
 ## Project Documents
 
-- [Methodology](docs/methodology.md): how claims, evidence chains, probes, and mock-boundary checks fit together.
-- [Evaluation Design](docs/evaluation-design.md): how cases, baselines, findings, and expected outputs are organized.
-- [Real PR Input Bundles](docs/real-pr-input.md): how real PR artifacts and LLM-assisted claim candidates should be organized.
-- [Annotation Guidelines](docs/annotation-guidelines.md): how human ground truth should be created without using Claim Harness output.
-- [Benchmark Protocol](docs/benchmark-protocol.md): how coverage, heuristic, LLM, and Claim Harness methods should be compared.
-- [Runner Artifacts](docs/runner-artifacts.md): what the curated-case runner emits for evidence, findings, mock boundaries, and probes.
-- [Roadmap](docs/roadmap.md): the MVP boundary and staged evolution.
+- [Methodology](docs/methodology.md): the PR-centered evidence model and rule-design principles.
+- [Evaluation Design](docs/evaluation-design.md): how rules are validated without turning the project into a benchmark effort.
+- [Real PR Input](docs/real-pr-input.md): the normalized PR input shape and the path toward CLI/CI integration.
+- [Rule Fixtures](docs/rule-fixtures.md): how controlled fixtures define expected rule behavior for regression testing.
+- [Validation Strategy](docs/validation-strategy.md): how to validate rule usefulness, false positives, and real-world behavior.
+- [Runner Artifacts](docs/runner-artifacts.md): what the current regression-fixture runner emits.
+- [Roadmap](docs/roadmap.md): the lightweight CLI and GitHub Action path from the current `0.1.0` prototype.
 
 ## Current Scope
 
-Version `0.1.0` contains a source-tree runner for curated Python/pytest cases and normalized real-PR input validation.
+Version `0.1.0` contains the renamed CLI surface, executable Python/pytest regression fixtures, deterministic rule/evidence artifacts, and normalized real-PR input validation.
 
 It still does **not** include:
 
-- a safe general-purpose runner for arbitrary external repositories;
-- default automated claim extraction;
-- automated GitHub ingestion;
+- a direct arbitrary-repository `pr-test-guard check` command;
+- a reusable GitHub Action for external repositories;
+- GitHub API ingestion or PR annotations;
+- configurable advisory/error severity policy;
 - per-test coverage mapping;
-- default LLM semantic reasoning;
-- broad mock-boundary classification beyond explicit Python mock patterns;
-- broad counterfactual generation beyond limited deterministic probe templates;
-- a reusable GitHub Action for external PR review.
+- broad semantic assertion or mock classification;
+- safe general-purpose execution of untrusted external repositories.
 
-The goal is to make evidence-adequacy review repeatable without pretending that any automated harness can prove a PR correct.
+The next product milestone is to turn the existing rule logic into a lightweight PR-facing CLI, then expose the same core through GitHub Actions. Advisory output should remain the default; repositories can choose later which high-confidence rules deserve enforcement.
 
 ## License
 

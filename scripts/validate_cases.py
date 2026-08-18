@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate Claim Harness curated-case structure.
+"""Validate PR Test Guard regression-fixture structure.
 
 By default this script checks file presence, JSON shape, claim references, and
 finding labels. With --run it also copies each fixture to a temporary directory,
@@ -140,7 +140,7 @@ def main() -> int:
     parser.add_argument(
         "--cases-root",
         default="cases/python",
-        help="directory containing curated cases (default: cases/python)",
+        help="directory containing regression fixtures (default: cases/python)",
     )
     parser.add_argument(
         "--run",

@@ -1,214 +1,151 @@
-# Roadmap and MVP Scope
+# Roadmap
 
-Claim Harness started as a documentation and methodology seed. The repository now adds a small executable benchmark foundation so later implementation can be evaluated against fixed cases and ground truth.
+PR Test Guard is moving from an evidence-research prototype into a lightweight PR test-quality tool.
 
-The first implementation should stay narrow: enough structure to evaluate a few pull-request evidence patterns reproducibly, without turning into a general agent benchmark or a broad test-generation system.
+The product direction is intentionally narrow:
 
-## Current Scope
+> run fast, explain what triggered, surface review signals, and fit naturally into local CLI and CI workflows.
 
-This repository now contains:
+Version `0.1.0` remains pre-release while the public naming and product boundary are stabilized.
 
-- Project positioning and workflow in `README.md`.
-- Evaluation methodology in `docs/methodology.md`.
-- Evaluation design in `docs/evaluation-design.md`.
-- Human-labeling rules in `docs/annotation-guidelines.md`.
-- Baseline comparison rules in `docs/benchmark-protocol.md`.
-- Real PR input rules in `docs/real-pr-input.md`.
-- Four executable Python/pytest micro-PR cases under `cases/python/`.
-- A lightweight structural and executability validator in `scripts/validate_cases.py`.
-- A curated-case runner in `scripts/run_case.py` that emits evidence artifacts, v0 findings, mock-boundary summaries, limited counterfactual probe results, and expected-label comparisons.
-- A public source-tree module entrypoint via `python -m claim_harness` and `claim-harness`.
-- Optional LLM-assisted claim candidate extraction in `scripts/extract_claim_candidates.py`.
-- A synthetic normalized PR bundle under `examples/real-pr-bundles/`.
+## What Exists in 0.1.0
 
-There is still no general-purpose adequacy runner for arbitrary repositories, automated real PR ingestion client, per-test coverage mapping, broad semantic alignment, broad mock analysis, broad counterfactual generator, or end-to-end baseline implementation.
+- `pr-test-guard` / `python -m pr_test_guard` entrypoints;
+- executable Python/pytest regression fixtures;
+- changed-line coverage evidence;
+- test-diff and assertion summaries;
+- explicit Python mock-boundary candidates;
+- limited deterministic counterfactual probes;
+- normalized real-PR input bundle validation;
+- JSON and Markdown artifacts for debugging rule behavior.
 
-## Ecosystem Position
+The fixture runner is development infrastructure for the tool. It is not the product's public benchmark identity.
 
-Claim Harness is adjacent to several existing categories, but it asks a different question.
+## Product Principles
 
-| Category | Typical question | Claim Harness question |
-| --- | --- | --- |
-| SWE-bench-style issue benchmarks | Can the agent solve the issue? | After the agent submits a PR, do the tests support the PR's claims? |
-| Patch coverage tools | Did tests execute changed lines? | Did executed tests assert the claimed behavior? |
-| Test generation benchmarks | Can tests be generated for code? | Are the tests attached to this PR adequate evidence? |
-| Agentic PR empirical studies | What patterns appear across generated PRs? | Can a reviewer inspect evidence adequacy for one PR reproducibly? |
+### Lightweight first
 
-The project should use restrained claims about novelty. The useful distinction is lifecycle and evidence focus, not a claim that related work is irrelevant.
+Prefer deterministic checks that can run locally or in CI without a hosted service, API key, or large setup burden.
 
-## MVP Boundary
+### PR first
 
-The practical MVP should aim for a small, inspectable workflow:
+The primary user context is a pull request: what code changed, what tests changed, what ran, and what obvious test-quality risks deserve review.
 
-1. Curated Python/pytest cases with known weak and adequate evidence patterns.
-2. A minimal claim and finding format.
-3. A runner that can execute tests and collect coverage.
-4. Manual or semi-structured claim extraction before full automation.
-5. Baseline comparison against simple coverage-only and heuristic rules.
-6. A semantic layer only where natural-language alignment is required.
-7. Controlled mock-boundary and counterfactual analysis after the evidence chain is stable.
+### Advisory by default
 
-The MVP should avoid:
+Heuristic signals such as weak assertions or suspicious mocks should default to warnings. Repositories can choose later which high-confidence policies deserve to block merges.
 
-- Generating tests automatically.
-- Running arbitrary untrusted repositories without isolation design.
-- Scoring PR correctness.
-- Treating an LLM judgment as the only evidence source.
-- Expanding into many languages before the evaluation shape is stable.
-- Emitting pseudo-precise confidence percentages before calibration data exists.
+### CLI core, integrations on top
 
-## Staged Evolution
+The analysis logic should live behind a reusable CLI/core. GitHub Actions should wrap that core rather than creating a separate implementation.
 
-### Stage 1: Curated Benchmark Foundation
+## Stage 1: Rename and Reposition
 
-**Status: initial version added.**
+- rename the public project to PR Test Guard;
+- rename package and CLI surfaces;
+- remove benchmark/harness language from the main product story;
+- retain useful existing rule logic and regression fixtures;
+- make README and docs describe the same lightweight PR-checking direction.
 
-Maintain a small set of executable Python/pytest examples. Each case includes:
+## Stage 2: Direct PR Check Command
 
-- an issue;
-- manually structured claims;
-- a base repository fixture;
-- a PR-like patch;
-- expected findings;
-- metadata.
-
-The first cases cover `Weak Assertion`, `Issue-Test Mismatch`, `Mocked Core Path`, and a positive `Evidence Complete` control.
-
-The stage also defines annotation and benchmark protocols so ground truth is fixed before the main implementation is evaluated.
-
-### Stage 2: Runner Skeleton
-
-**Status: evidence and v0 findings runner added with stable source-tree entrypoint.**
-
-Maintain a lightweight runner that can:
-
-- materialize or copy a case fixture;
-- apply its PR patch;
-- execute pytest;
-- collect raw test results;
-- collect line coverage for changed code;
-- preserve raw artifacts rather than immediately compressing them into a score;
-- emit deterministic v0 findings for the initial curated case families;
-- compare generated labels with expected labels;
-- expose the workflow through `python -m claim_harness` while preserving legacy scripts.
-
-The runner emits test results, coverage XML, a changed-line coverage map, test/assertion summaries, mock-boundary summaries, limited counterfactual probe results, an evidence chain, generated findings, expected-label comparison, and a Markdown report. Per-test coverage remains a follow-up.
-
-### Stage 3: Real PR Input Bundles
-
-**Status: input contract and synthetic normalized bundle added.**
-
-Maintain a normalized bundle shape for real PR artifacts:
-
-- PR metadata;
-- PR diff;
-- CI summary or logs;
-- optional coverage artifacts;
-- missing-artifact records;
-- LLM-assisted claim candidates.
-
-These bundles validate ingestion shape and evidence preservation. They should not be treated as benchmark ground truth unless independently labeled.
-
-LLM-assisted claim extraction is optional and candidate-only. It is not a default CI requirement and does not produce adequacy findings.
-
-The normalized bundle layer is intentionally agent-agnostic. Future adapter work should translate provider-specific PR surfaces into the same bundle contract instead of adding agent-specific assumptions to the core runner.
-
-### Stage 4: Per-Test Evidence Mapping
-
-Connect:
+Add a first repository-native command, for example:
 
 ```text
-changed lines/functions -> exact pytest tests -> execution evidence
+pr-test-guard check --base <base-ref>
 ```
 
-For the Python MVP, this stage can use diff parsing, Python AST information, pytest test IDs, and per-test coverage context.
+It should initially focus on low-cost inputs:
 
-Emit the first machine-readable `evidence_chain.json`.
+- git diff;
+- production/test file changes;
+- assertion/test changes;
+- optional existing coverage report.
 
-### Stage 5: Initial Automated Findings
+Avoid requiring a normalized bundle for normal local use.
 
-**Status: v0 deterministic findings added for curated cases.**
+## Stage 3: Small Rule Set
 
-Maintain and improve the first deterministic or mostly deterministic findings:
+Turn the most useful existing logic into explicit, individually configurable rules.
 
-- `Missing Test Evidence`;
-- `Uncovered Changed Lines`;
-- basic assertion extraction;
-- obvious weak-assertion patterns;
-- explicit Python mock-boundary candidates;
-- limited counterfactual survivors.
+Initial candidates:
 
-Keep the rules auditable and report evidence references instead of a single opaque score.
+1. changed production code with no obvious test change;
+2. uncovered changed executable lines when coverage exists;
+3. obvious weak assertion patterns;
+4. suspicious test deletion, skip, xfail, or assertion weakening;
+5. explicit mock candidates on changed behavior paths as warning-only evidence.
 
-### Stage 6: Semantic Alignment
+Each rule should emit:
 
-Introduce an LLM-assisted semantic layer for tasks that genuinely require natural-language understanding:
+```text
+rule id
+severity
+file / line when available
+short message
+evidence reference
+```
 
-- issue or PR text to structured claims;
-- claim-to-code mapping where structural mapping is insufficient;
-- claim-to-assertion semantic alignment;
-- distinction between nearby but materially different test behavior.
+## Stage 4: GitHub Action
 
-The LLM should propose or interpret semantics; structural and runtime artifacts remain the primary evidence.
+Publish a reusable GitHub Action that invokes the same core CLI on `pull_request` workflows.
 
-### Stage 7: Mock Boundary Analysis
+First output targets:
 
-**Status: explicit Python mock target detection added for curated cases.**
+- normal workflow logs;
+- GitHub job summary;
+- file/line warnings where supported.
 
-Continue from explicit Python mock patterns:
+Do not require a backend service.
 
-- `unittest.mock.patch`;
-- `pytest` monkeypatch;
-- common `mocker.patch` forms.
+## Stage 5: Advisory and Enforcement Policy
 
-The first version detects mock targets structurally and marks targets that match changed functions or classes. The next step is better claim-relative classification: determine whether the mock merely isolates a dependency or replaces the behavior named by the claim.
+Add a small configuration surface such as:
 
-### Stage 8: Controlled Counterfactual Probes
+```text
+advisory by default
+optional fail-on selected rules or severity
+```
 
-**Status: limited deterministic probe templates added for curated cases.**
+Keep policy separate from detection. The checker identifies signals; the repository decides what blocks a merge.
 
-Continue improving reproducible claim-guided probes.
+## Stage 6: False-Positive Reduction
 
-Progress from:
+Expand regression fixtures with negative controls and dogfood the rules on real PRs.
 
-1. simple rule/AST-based mutations;
-2. manually reviewed counterfactual patches in curated cases;
-3. optional LLM-guided mutation proposals validated and executed by the harness.
+Prioritize noisy areas:
 
-A `Counterfactual Survivor` requires an actual rerun result, not an LLM prediction.
+- weak assertions;
+- mock boundaries;
+- existing-test coverage when no test file changed;
+- refactors and non-behavioral changes;
+- test deletion/skip intent.
 
-### Stage 9: Baseline Benchmark
+## Stage 7: Broader CI and Language Support
 
-Run the same labeled case suite through:
+After the GitHub/Python path is stable, consider:
 
-- coverage only;
-- deterministic heuristic baseline;
-- LLM prompt-only baseline;
-- LLM all-evidence baseline;
-- Claim Harness.
+- GitLab or other CI wrappers;
+- JavaScript/TypeScript test patterns;
+- other coverage formats;
+- repository configuration for path/test mapping.
 
-Report precision, recall, F1, and per-finding results. Add stability, cost, and evidence-localization metrics as the implementations mature.
+## Stage 8: Optional Semantic Assistance
 
-### Stage 10: Real-World Agentic PR Validation
+Only after deterministic rules are useful on their own, consider optional semantic assistance for ambiguous mappings.
 
-Expand beyond synthetic cases only after the evaluation contract is stable.
+It should remain:
 
-Use:
+- opt-in;
+- explainable;
+- non-authoritative;
+- separate from default merge policy.
 
-- real agent-generated PRs;
-- blind human labeling;
-- adjudication;
-- inter-annotator agreement;
-- a clearly separated real-world benchmark split.
+## Explicit Non-Goals for the Near Term
 
-## Design Principles
-
-- Evidence should be auditable by humans.
-- Ground truth should be independent from Claim Harness output.
-- Findings should explain why evidence is adequate or inadequate.
-- Coverage should remain an input, not the final answer.
-- LLM reasoning should handle semantics, not replace runtime evidence.
-- Mocks should be evaluated relative to the claim, not treated as inherently suspicious.
-- Counterfactual findings should be backed by executed probes.
-- Benchmarks should prefer small, clear cases before scale.
-- The harness should help reviewers find risk, not certify correctness.
+- building a custom leaderboard benchmark;
+- maintaining a large human-labeled dataset;
+- proving overall PR correctness;
+- replacing existing test runners or coverage tools;
+- becoming a general-purpose AI code-review agent;
+- running a hosted service when a local/CI workflow is sufficient.

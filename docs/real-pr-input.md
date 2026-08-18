@@ -1,163 +1,86 @@
-# Real PR Input Bundles
+# Real PR Input
 
-This document defines the first input contract for bringing real agentic PRs into Claim Harness. Curated cases remain the benchmark foundation; real PR bundles are the bridge to reviewer-facing usage.
+This document defines the current bridge from controlled fixtures to real pull requests.
 
-The goal is to preserve the evidence surface for a PR without pretending every artifact is always available or that every AI agent formats PRs the same way.
+PR Test Guard should keep its core analysis independent from one coding agent or one hosting provider. The long-term product shape is a CLI that can analyze local PR context, with GitHub Actions as the first automated integration.
 
-## Bundle Goal
+## Why Normalize PR Artifacts
 
-A real PR bundle should answer:
+A pull request may expose useful context through different places:
 
-```text
-what did the PR claim -> what changed -> what tests changed or ran -> what evidence is present -> what is missing
-```
-
-The bundle is not a finding report. It is the normalized input that later runner stages can use for coverage mapping, semantic alignment, mock-boundary analysis, counterfactual probes, and deterministic findings.
-
-## Agent-Agnostic Input Layer
-
-Claim Harness should not bind its core runner to one AI agent's PR style. Different agents may put claims in different places:
-
-- issue text;
-- task prompts;
 - PR title and body;
-- commit messages;
-- generated summaries;
-- review comments;
-- code and test diffs.
+- linked issue or task;
+- git diff;
+- test diff;
+- CI summary or logs;
+- coverage reports;
+- optional change-intent text.
 
-The public contract is therefore:
+The checker should use what is available and record what is missing instead of inventing evidence.
 
-```text
-agent-specific artifacts -> normalized real PR bundle -> claim candidates -> evidence artifacts
-```
+## Current Bundle Shape
 
-Agent-specific parsing should live in thin adapters that produce the same bundle shape. The core evidence runner should consume normalized artifacts and explicit missing-artifact records.
+The prototype bundle under `examples/real-pr-bundles/` can include:
 
-## Layout
+- `bundle.json`
+- `pr.json`
+- `pr.diff`
+- `ci-summary.md`
+- `claim_candidates.json`
+- `missing_artifacts.json`
+- optional issue/task text
+- optional coverage or test results
 
-Use one directory per PR:
+The current `claim_candidates.json` is a prototype context artifact, not a requirement for every future rule. Straightforward diff- and coverage-based checks should not need an LLM-generated claim layer.
 
-```text
-examples/real-pr-bundles/<bundle_id>/
-  README.md
-  bundle.json
-  pr.json
-  pr.diff
-  ci-summary.md
-  claim_candidates.json
-  missing_artifacts.json
-```
+## Validation
 
-Optional artifacts can be added when available:
-
-```text
-  issue.md
-  task.md
-  test-result.json
-  ci.log
-  coverage.xml
-  lcov.info
-  mock-boundary.json
-  counterfactual-results.json
-```
-
-## Artifact Sources
-
-| Artifact | Source | Notes |
-| --- | --- | --- |
-| `issue.md` or `task.md` | Issue tracker, task brief, PR prompt, or review request | At least one source of intended behavior is preferred. If absent, record the gap. |
-| `pr.json` | Hosting provider API or CLI | Should include PR number, URL, title, body, author, base/head refs, merge status, commit ids, and changed-file counts. |
-| `pr.diff` | Hosting provider diff endpoint or CLI | Source of changed code units and test diff. |
-| `ci-summary.md` | CI provider check summary | Should record check names, status, URLs, and relevant commands when known. |
-| `test-result.json` or `ci.log` | CI logs or local runner output | Evidence that tests actually ran. |
-| `coverage.xml` or `lcov.info` | CI artifact or local coverage run | Coverage is evidence, not the final adequacy answer. |
-| `claim_candidates.json` | Manual or LLM-assisted extraction | Candidate claims must be reviewed and linked back to source artifacts. |
-| `missing_artifacts.json` | Bundle author | Explicit record of unavailable inputs and expected impact. |
-
-## LLM-Assisted Claim Candidates
-
-LLM use is appropriate for candidate extraction and summarization, but not as the final judge.
-
-The claim-candidate step may use an LLM to propose structured change claims from:
-
-- issue or task text;
-- PR title and body;
-- PR diff;
-- test diff summary.
-
-The output must remain a candidate artifact:
-
-- It should be stored as `claim_candidates.json`.
-- It should include source references and confidence notes.
-- It should be reviewable and editable.
-- It must not create `Evidence Complete`.
-- It must not replace test execution, coverage evidence, CI evidence, mock-boundary analysis, or counterfactual probes.
-
-If an LLM is used later in automation, it should propose claims or mappings that the harness verifies with structured artifacts. A prompt-only adequacy judgment should remain a baseline, not the core method.
-
-## Missing Artifacts
-
-Missing evidence should be explicit. A bundle should not silently omit unavailable inputs.
-
-Use `missing_artifacts.json` to record:
-
-- the missing artifact name;
-- whether it is required or optional for the current stage;
-- why it is missing;
-- the expected impact on evidence adequacy review.
-
-Example:
-
-```json
-{
-  "missing": [
-    {
-      "artifact": "coverage.xml",
-      "required_for_stage": false,
-      "reason": "No coverage artifact was published for the PR.",
-      "impact": "Changed-line execution cannot be evaluated from this bundle yet."
-    }
-  ]
-}
-```
-
-Missing artifacts should lower confidence in the evidence chain, but they should not force the harness to invent evidence.
-
-## Relationship to Curated Cases
-
-Curated cases define controlled ground truth. Real PR bundles define ingestion shape.
-
-Do not use a real PR bundle as benchmark ground truth unless it has been independently labeled under `docs/annotation-guidelines.md`. A synthetic normalized bundle can validate artifact organization without becoming a scored case.
-
-Validate bundle structure:
+Validate the example bundle with:
 
 ```bash
-python3 -m claim_harness validate-real-pr-bundles
+python3 -m pr_test_guard validate-real-pr-bundles
 ```
 
-The legacy script entrypoint remains available:
+The validator checks structure and cross-file consistency. It does not claim that the example represents a real repository or a scored dataset.
 
-```bash
-python3 scripts/validate_real_pr_bundles.py
+## CLI Direction
+
+The target CLI should eventually accept repository-native context directly, for example:
+
+```text
+pr-test-guard check --base <base-ref>
 ```
 
-Optionally refresh claim candidates with an LLM-backed extraction script:
+A direct check command should derive the PR diff from git, discover relevant test changes, optionally consume an existing coverage artifact, and emit normalized findings.
 
-```bash
-OPENAI_API_KEY=... OPENAI_MODEL=... python3 scripts/extract_claim_candidates.py \
-  examples/real-pr-bundles/normalized-pr-bundle-001
+That command does not exist in `0.1.0`; the current bundle is preparation for that transition.
+
+## GitHub Actions Direction
+
+GitHub Actions should wrap the same CLI/core rather than becoming a separate analysis engine.
+
+The intended flow is:
+
+```text
+pull_request event
+  -> checkout
+  -> existing project test/coverage job
+  -> PR Test Guard CLI
+  -> annotations / job summary
 ```
 
-This script is not part of the default CI path. It requires `requirements-llm.txt` and writes candidate claims only.
+The default integration should be advisory. A warning such as a possible weak assertion should not automatically block a merge. Repositories may later configure selected high-confidence rules or thresholds as enforcement policy.
 
-## Non-goals
+## Missing Evidence
 
-This input contract does not:
+Missing evidence is itself useful context, but it must be reported precisely.
 
-- implement a GitHub ingestion client;
-- call an LLM API;
-- create automated findings;
-- score real PRs;
-- require coverage to exist for every PR;
-- replace human review.
+For example, if no coverage artifact is available, the tool may say that changed-line coverage was not evaluated. It should not infer that changed code is uncovered.
+
+This distinction is important for a lightweight tool that must work across repositories with different CI setups.
+
+## Security Boundary
+
+A GitHub Action should request the minimum permissions needed for analysis. The checker should not need write access or repository secrets for its default rule path.
+
+If a future mode executes untrusted PR code, that execution must follow the repository's existing CI trust model rather than silently escalating privileges.
