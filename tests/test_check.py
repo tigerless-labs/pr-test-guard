@@ -1,0 +1,160 @@
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+from pr_test_guard.check import analyze_repository
+
+
+def run(*args: str, cwd: Path) -> None:
+    subprocess.run(list(args), cwd=cwd, check=True, capture_output=True, text=True)
+
+
+def write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def make_repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run("git", "init", "-b", "main", cwd=repo)
+    run("git", "config", "user.name", "Test User", cwd=repo)
+    run("git", "config", "user.email", "test@example.com", cwd=repo)
+    return repo
+
+
+def commit_all(repo: Path, message: str) -> None:
+    run("git", "add", "-A", cwd=repo)
+    run("git", "commit", "-m", message, cwd=repo)
+
+
+def rule_ids(result) -> set[str]:
+    return {item.rule_id for item in result.findings}
+
+
+def test_missing_test_change_is_advisory_signal(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "app.py", "def value():\n    return 1\n")
+    write(repo / "tests/test_app.py", "from app import value\n\ndef test_value():\n    assert value() == 1\n")
+    commit_all(repo, "base")
+
+    write(repo / "app.py", "def value():\n    return 2\n")
+    commit_all(repo, "change production only")
+
+    result = analyze_repository(repo, base="HEAD~1")
+    assert "PTG001" in rule_ids(result)
+
+
+def test_weak_assertion_and_mock_boundary_are_detected(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "payment.py", "def charge(amount):\n    return amount > 0\n")
+    write(
+        repo / "tests/test_payment.py",
+        "from payment import charge\n\ndef test_charge():\n    assert charge(1) is True\n",
+    )
+    commit_all(repo, "base")
+
+    write(repo / "payment.py", "def charge(amount):\n    return amount >= 0\n")
+    write(
+        repo / "tests/test_payment.py",
+        "from unittest.mock import patch\nfrom payment import charge\n\n"
+        "@patch('payment.charge')\ndef test_charge(mock_charge):\n    mock_charge.return_value = True\n    result = charge(0)\n    assert result is not None\n",
+    )
+    commit_all(repo, "change behavior and test")
+
+    result = analyze_repository(repo, base="HEAD~1")
+    ids = rule_ids(result)
+    assert "PTG003" in ids
+    assert "PTG005" in ids
+
+
+def test_test_skip_is_detected(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "app.py", "def value():\n    return 1\n")
+    write(repo / "tests/test_app.py", "from app import value\n\ndef test_value():\n    assert value() == 1\n")
+    commit_all(repo, "base")
+
+    write(
+        repo / "tests/test_app.py",
+        "import pytest\nfrom app import value\n\n@pytest.mark.skip(reason='later')\ndef test_value():\n    assert value() == 1\n",
+    )
+    commit_all(repo, "skip test")
+
+    result = analyze_repository(repo, base="HEAD~1")
+    assert "PTG004" in rule_ids(result)
+
+
+def test_uncovered_changed_line_uses_supplied_coverage(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "app.py", "def value():\n    return 1\n")
+    write(repo / "tests/test_app.py", "from app import value\n\ndef test_value():\n    assert value() == 1\n")
+    commit_all(repo, "base")
+
+    write(repo / "app.py", "def value():\n    if True:\n        return 2\n")
+    write(repo / "tests/test_app.py", "from app import value\n\ndef test_value():\n    assert value() == 2\n")
+    commit_all(repo, "change")
+
+    coverage = repo / "coverage.xml"
+    coverage.write_text(
+        "<?xml version='1.0' ?><coverage><packages><package><classes>"
+        "<class filename='app.py'><lines>"
+        "<line number='1' hits='1'/><line number='2' hits='0'/><line number='3' hits='0'/>"
+        "</lines></class></classes></package></packages></coverage>",
+        encoding="utf-8",
+    )
+
+    result = analyze_repository(repo, base="HEAD~1", coverage_path="coverage.xml")
+    assert "PTG002" in rule_ids(result)
+
+
+def test_targeted_probe_survivor_runs_in_isolated_worktree(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "app.py", "def status(ok):\n    return 400\n")
+    write(repo / "tests/test_app.py", "from app import status\n\ndef test_status():\n    assert status(False) is not None\n")
+    commit_all(repo, "base")
+
+    write(repo / "app.py", "def status(ok):\n    if not ok:\n        return 400\n    return 200\n")
+    write(repo / "tests/test_app.py", "from app import status\n\ndef test_status():\n    assert status(False) is not None\n")
+    commit_all(repo, "add branch")
+
+    result = analyze_repository(
+        repo,
+        base="HEAD~1",
+        deep=True,
+        test_command="python -m pytest -q",
+        max_probes=1,
+    )
+    assert "PTG006" in rule_ids(result)
+    assert result.probe_summary["baseline_passed"] is True
+    assert result.probe_summary["survived"] == 1
+    assert run_worktree_list(repo) == 1
+
+
+def run_worktree_list(repo: Path) -> int:
+    result = subprocess.run(
+        ["git", "worktree", "list", "--porcelain"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return sum(1 for line in result.stdout.splitlines() if line.startswith("worktree "))
+
+
+def test_skip_text_inside_fixture_string_is_not_a_real_skip(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "app.py", "def value():\n    return 1\n")
+    write(repo / "tests/test_meta.py", "def test_meta():\n    assert True\n")
+    commit_all(repo, "base")
+
+    write(
+        repo / "tests/test_meta.py",
+        "def test_meta():\n"
+        "    sample = \"@pytest.mark.skip(reason='example only')\"\n"
+        "    assert sample\n",
+    )
+    commit_all(repo, "fixture string")
+
+    result = analyze_repository(repo, base="HEAD~1")
+    assert "PTG004" not in rule_ids(result)

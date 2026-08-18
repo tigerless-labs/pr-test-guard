@@ -61,25 +61,22 @@ A mock candidate should tell a reviewer where to look; it should not automatical
 
 ### Counterfactual evidence
 
-The existing prototype can execute a small set of deterministic behavior weakenings and rerun pytest. Surviving probes can strengthen a test-quality warning.
+The direct checker can execute a small set of deterministic behavior weakenings against changed Python lines. This path is opt-in through `--deep`, requires an explicit test command, and runs in an isolated Git worktree. Surviving probes can strengthen a test-quality warning.
 
-This mechanism is retained as an advanced signal, not as a requirement for the lightweight product direction.
+This is a bounded PR-scoped signal, not a full mutation-testing campaign or repository-wide mutation score.
 
 ## Finding Model
 
-The current prototype retains these finding families:
+The direct checker uses six stable rule ids for the current Python/pytest scope:
 
-- `Missing Test Evidence`
-- `Uncovered Changed Lines`
-- `Weak Assertion`
-- `Issue-Test Mismatch`
-- `Suspicious Fix Without Test`
-- `Mocked Core Path`
-- `CI Scope Weakening`
-- `Counterfactual Survivor`
-- `Evidence Complete`
+- `PTG001` — production code changed with no test-file change;
+- `PTG002` — changed Python line uncovered in a supplied coverage XML;
+- `PTG003` — possible weak assertion added in a changed test;
+- `PTG004` — suspicious test deletion, skip/xfail, or assertion removal;
+- `PTG005` — structural mock target overlaps a changed Python symbol;
+- `PTG006` — bounded targeted probe survives the configured tests.
 
-The public interpretation should be conservative. A finding is a **review signal**. `Evidence Complete` only means that the current fixture did not trigger the targeted evidence-gap rules; it is not a correctness certificate.
+Each result includes a rule id, advisory severity, file/line where available, a short message, and evidence text. The older fixture runner retains its research-prototype labels only so existing regression fixtures remain stable during the transition.
 
 ## CLI and CI Boundary
 
@@ -97,6 +94,6 @@ CI integration should be advisory by default. Repositories may later opt into st
 
 ## Current Limits
 
-Version `0.1.0` still uses controlled Python/pytest fixtures to exercise the rule logic. It does not yet provide a general `check` command for arbitrary repositories or a reusable GitHub Action.
+Version `0.1.0` now provides a repository-native `check` command and a reusable GitHub Action for the current Python/pytest scope. The checker is intentionally conservative: it does not infer full PR correctness, automatically discover every project's test command, or treat heuristic signals as merge-blocking failures.
 
-The immediate engineering goal is therefore not to add more research machinery. It is to extract the useful rule logic into a direct PR-facing workflow while keeping the current fixtures as regression tests.
+The immediate engineering goal is real-PR dogfooding and false-positive reduction. Controlled fixtures remain regression tests for the tool rather than a public benchmark.

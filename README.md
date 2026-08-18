@@ -8,7 +8,7 @@
 
 PR Test Guard helps reviewers spot PRs that look tested but still carry obvious test-quality risks: missing test changes, uncovered changed code, weak assertions, mismatched tests, or mocks that may replace the behavior under review.
 
-The project is CLI-first and designed to fit naturally into CI. Its default product direction is advisory: surface actionable signals for reviewers, and let each repository decide which rules, if any, should become merge-blocking policy. Version `0.1.0` keeps the existing executable regression-fixture runner while the direct PR-checking CLI and reusable GitHub Action are being built.
+The project is CLI-first and designed to fit naturally into CI. Its default behavior is advisory: surface actionable signals for reviewers, and let each repository decide which rules, if any, should become merge-blocking policy. Version `0.1.0` adds direct real-PR analysis and ships the same analyzer as a reusable GitHub Action.
 
 | | |
 | --- | --- |
@@ -21,36 +21,79 @@ The project is CLI-first and designed to fit naturally into CI. Its default prod
 
 ## Quick Start
 
-Clone the repository and run the current Python/pytest regression fixtures. Version `0.1.0`
-is intended for source-tree use and is not published to PyPI yet:
+Install from the source tree while `0.1.0` is being prepared for release:
 
 ```bash
 python3 -m pip install -e .
-python3 -m pr_test_guard --version
-python3 -m pr_test_guard validate-cases
-python3 -m pr_test_guard validate-cases --run
-python3 -m pr_test_guard run-cases --output-dir /tmp/pr-test-guard-artifacts
 ```
 
-The same commands are available through the console script after editable install:
+Run the checker inside any Git repository that contains the PR branch you want to review:
 
 ```bash
-pr-test-guard validate-cases
-pr-test-guard run-cases --case weak_assertion_001 --output-dir /tmp/pr-test-guard-artifacts
+cd /path/to/your-project
+pr-test-guard check --base origin/main
 ```
 
-The script entrypoints remain supported:
+If the project already produces a `coverage.py` XML report, add it as another signal:
 
 ```bash
-python3 scripts/validate_cases.py
-python3 scripts/validate_cases.py --run
-python3 scripts/run_case.py --output-dir /tmp/pr-test-guard-artifacts
+pr-test-guard check --base origin/main --coverage coverage.xml
 ```
 
-Validate the synthetic normalized real-PR input bundle:
+For the optional deeper check, explicitly provide the project's test command. PR Test Guard creates an isolated Git worktree, runs the unmodified tests once, then applies at most a few bounded probes to changed Python lines:
 
 ```bash
-python3 -m pr_test_guard validate-real-pr-bundles
+pr-test-guard check \
+  --base origin/main \
+  --deep \
+  --test-command "pytest -q" \
+  --max-probes 3
+```
+
+Findings are advisory and a successful analysis exits `0` even when warnings are found. Operational errors such as an invalid base ref or malformed coverage file exit non-zero.
+
+To run the same analyzer automatically on pull requests, add a workflow such as:
+
+```yaml
+name: PR Test Guard
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pr-test-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: tigerless-labs/pr-test-guard@v0.1.0
+        with:
+          base: origin/${{ github.base_ref }}
+```
+
+Coverage and deep probes are opt-in Action inputs. Deep mode assumes the workflow has already installed the target repository's own test dependencies and that the configured test command passes before PR Test Guard runs:
+
+```yaml
+      - uses: tigerless-labs/pr-test-guard@v0.1.0
+        with:
+          base: origin/${{ github.base_ref }}
+          coverage: coverage.xml
+          deep: "true"
+          test-command: pytest -q
+          max-probes: "3"
+```
+
+The existing regression-fixture commands remain available for development of PR Test Guard itself. Install the development extras first:
+
+```bash
+python3 -m pip install -e ".[dev]"
+pr-test-guard validate-cases --run
+pr-test-guard run-cases --output-dir /tmp/pr-test-guard-artifacts
 ```
 
 ## What It Evaluates
@@ -70,21 +113,18 @@ It currently models evidence that can help answer:
 - **Do mocks or patches appear to replace the behavior under review?**
 - **Can a limited counterfactual change survive the attached tests?**
 
-Initial finding types are kept from the original research prototype because they exercise useful PR-test failure modes:
+The direct `check` command currently emits six PR-scoped rule families:
 
-| Finding | Meaning |
+| Rule | Signal |
 | --- | --- |
-| `Missing Test Evidence` | No clear test evidence is attached to a behavior-changing PR path. |
-| `Uncovered Changed Lines` | Relevant changed executable code is not exercised by the available tests. |
-| `Weak Assertion` | Code is exercised, but the assertion may not meaningfully constrain the expected outcome. |
-| `Issue-Test Mismatch` | The available test appears to validate a materially different behavior from the change intent. |
-| `Suspicious Fix Without Test` | A behavioral change appears without a corresponding test change or identifiable existing test link. |
-| `Mocked Core Path` | A mock or stub appears to replace the behavior path that should provide evidence. |
-| `CI Scope Weakening` | CI or test configuration appears to narrow validation around affected behavior. |
-| `Counterfactual Survivor` | A limited controlled weakening still passes the attached tests. |
-| `Evidence Complete` | The current fixture has no targeted evidence gap; this is not a correctness certificate. |
+| `PTG001` | Production Python changed but the PR contains no test-file change. |
+| `PTG002` | A changed Python line is uncovered in the supplied coverage XML. |
+| `PTG003` | A newly added assertion has an obviously weak existence/truthiness shape. |
+| `PTG004` | A test was deleted, skipped/xfail-marked, or lost assertions. |
+| `PTG005` | A structural mock target overlaps a Python symbol changed by the PR. |
+| `PTG006` | An opt-in bounded targeted probe survives the configured tests. |
 
-These are review-oriented signals. Heuristic findings such as `Weak Assertion` or `Mocked Core Path` should be advisory by default rather than automatic reasons to block a merge.
+These are review-oriented signals. Heuristic findings such as `PTG003` and `PTG005` are advisory by default rather than automatic reasons to block a merge. The older fixture runner retains its research-prototype labels internally so existing regression cases keep working.
 
 ## Current Runner
 
@@ -121,36 +161,26 @@ artifacts/<case_id>/
 
 ## Real PR Bundles
 
-PR Test Guard is intended to move from controlled fixtures to real pull requests without tying the core analysis to one agent or hosting workflow.
-
-The current normalized input prototype is:
+Normal users no longer need to prepare a normalized bundle. The primary real-PR path is repository-native:
 
 ```text
-PR metadata + diff + test/CI artifacts -> normalized PR bundle -> rule evidence -> findings
+current Git repository + base ref + optional coverage/test command
+  -> pr-test-guard check
+  -> PR-scoped rule signals
+  -> text / JSON / GitHub Actions output
 ```
 
-A normalized bundle can include:
+The older normalized bundle under `examples/real-pr-bundles/` remains as a development fixture and compatibility prototype for richer CI artifacts. It can include PR metadata, a diff, CI/test results, coverage, and optional change-intent context, but it is not required by the direct checker. See [Real PR Input](docs/real-pr-input.md).
 
-- `issue.md` or `task.md`
-- `pr.json`
-- `pr.diff`
-- `ci-summary.md`
-- `test-result.json` or `ci.log`
-- `coverage.xml` or `lcov.info`
-- optional change-intent candidates
-- `missing_artifacts.json`
-
-Missing artifacts should be recorded explicitly instead of silently treated as evidence. See [Real PR Input](docs/real-pr-input.md).
-
-The long-term integration is intentionally lighter than a hosted service: keep the analysis core callable from the CLI, then wrap it in a GitHub Action so pull requests can receive automatic advisory results in CI.
+The reusable `action.yml` calls the same CLI/core. There is no separate hosted analysis service and no API key is required for the default path.
 
 ## Mock and Probe Boundaries
 
 The current mock detector is structural. It recognizes explicit Python patterns such as `patch`, `patch.object`, `monkeypatch.setattr`, and `mocker.patch`, then checks whether the target matches a changed function or class. That produces a **candidate signal**; it does not prove that the mock is wrong.
 
-The current counterfactual probe generator is also deliberately limited. It covers common status-code weakening, boolean return flips, simple retry-limit rollback, and basic inclusive-boundary comparison weakening. A `Counterfactual Survivor` requires an actual pytest rerun result.
+The targeted probe generator is deliberately limited. It covers a small set of status-code changes, boolean return flips, and comparison-boundary changes on lines added by the current PR. A `PTG006` signal requires an actual rerun of the user-supplied test command in an isolated Git worktree.
 
-These deeper signals are retained from the original prototype, but they are not required to define the product. The lightweight public direction is to keep deterministic rules understandable, cheap to run, and safe to treat as advisory unless a repository explicitly opts into enforcement.
+These deeper signals are part of the product's differentiation beyond patch coverage. Mock-boundary analysis stays static and advisory. Targeted probes are bounded, PR-scoped, and opt-in through `--deep` because they rerun repository tests. The goal is not a full mutation-testing campaign; it is a small number of review-focused probes against code changed by the current PR.
 
 ## Optional LLM Claim Candidates
 
@@ -180,7 +210,7 @@ Patch-coverage tools answer whether changed lines were executed. PR Test Guard k
 
 - [Methodology](docs/methodology.md): the PR-centered evidence model and rule-design principles.
 - [Evaluation Design](docs/evaluation-design.md): how rules are validated without turning the project into a benchmark effort.
-- [Real PR Input](docs/real-pr-input.md): the normalized PR input shape and the path toward CLI/CI integration.
+- [Real PR Input](docs/real-pr-input.md): direct repository input, Action usage, optional coverage, and deep-probe boundaries.
 - [Rule Fixtures](docs/rule-fixtures.md): how controlled fixtures define expected rule behavior for regression testing.
 - [Validation Strategy](docs/validation-strategy.md): how to validate rule usefulness, false positives, and real-world behavior.
 - [Runner Artifacts](docs/runner-artifacts.md): what the current regression-fixture runner emits.
@@ -188,19 +218,25 @@ Patch-coverage tools answer whether changed lines were executed. PR Test Guard k
 
 ## Current Scope
 
-Version `0.1.0` contains the renamed CLI surface, executable Python/pytest regression fixtures, deterministic rule/evidence artifacts, and normalized real-PR input validation.
+Version `0.1.0` supports direct Python/pytest PR analysis from the current Git repository and a reusable advisory GitHub Action. The direct checker currently surfaces:
+
+- production-code changes with no test-file change;
+- uncovered changed Python lines when a coverage XML report is supplied;
+- obvious weak assertions added in changed tests;
+- suspicious test deletion, skip/xfail, or assertion removal;
+- structural mock targets that overlap changed Python symbols;
+- optional bounded targeted probes that survive an explicit test command.
 
 It still does **not** include:
 
-- a direct arbitrary-repository `pr-test-guard check` command;
-- a reusable GitHub Action for external repositories;
-- GitHub API ingestion or PR annotations;
-- configurable advisory/error severity policy;
+- configurable merge-blocking enforcement;
 - per-test coverage mapping;
 - broad semantic assertion or mock classification;
-- safe general-purpose execution of untrusted external repositories.
+- automatic discovery of every repository's test command;
+- safe privileged execution of untrusted PR code;
+- GitHub API ingestion or a hosted service.
 
-The next product milestone is to turn the existing rule logic into a lightweight PR-facing CLI, then expose the same core through GitHub Actions. Advisory output should remain the default; repositories can choose later which high-confidence rules deserve enforcement.
+The next milestone is real-PR dogfooding: run the rules across varied repositories, record useful / false-positive / unclear signals, and turn recurring false-positive patterns into regression fixtures before expanding the rule set.
 
 ## License
 

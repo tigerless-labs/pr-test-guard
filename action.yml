@@ -1,0 +1,92 @@
+name: PR Test Guard
+description: Lightweight advisory test-quality checks for pull requests.
+author: Tigerless Labs
+
+inputs:
+  base:
+    description: Base ref to compare against. Defaults to origin/$GITHUB_BASE_REF.
+    required: false
+    default: ""
+  coverage:
+    description: Optional path to a coverage.py XML report.
+    required: false
+    default: ""
+  deep:
+    description: Enable bounded targeted probes. Requires test-command.
+    required: false
+    default: "false"
+  test-command:
+    description: Test command used by deep targeted probes, for example pytest -q.
+    required: false
+    default: ""
+  max-probes:
+    description: Maximum number of targeted probes in deep mode.
+    required: false
+    default: "3"
+  python-version:
+    description: Python version used to run PR Test Guard.
+    required: false
+    default: "3.11"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install PR Test Guard
+      shell: bash
+      run: python -m pip install "${{ github.action_path }}"
+
+    - name: Resolve base ref
+      id: base
+      shell: bash
+      env:
+        INPUT_BASE: ${{ inputs.base }}
+      run: |
+        set -euo pipefail
+        base="$INPUT_BASE"
+        if [[ -z "$base" ]]; then
+          if [[ -z "${GITHUB_BASE_REF:-}" ]]; then
+            echo "Unable to infer PR base. Pass 'base' explicitly." >&2
+            exit 2
+          fi
+          base="origin/${GITHUB_BASE_REF}"
+        fi
+
+        if ! git rev-parse --verify "${base}^{commit}" >/dev/null 2>&1; then
+          if [[ "$base" == origin/* ]]; then
+            branch="${base#origin/}"
+            git fetch origin "${branch}:refs/remotes/origin/${branch}" --no-tags
+          fi
+        fi
+
+        echo "base=$base" >> "$GITHUB_OUTPUT"
+
+    - name: Run PR Test Guard
+      shell: bash
+      env:
+        INPUT_COVERAGE: ${{ inputs.coverage }}
+        INPUT_DEEP: ${{ inputs.deep }}
+        INPUT_TEST_COMMAND: ${{ inputs.test-command }}
+        INPUT_MAX_PROBES: ${{ inputs.max-probes }}
+        RESOLVED_BASE: ${{ steps.base.outputs.base }}
+      run: |
+        set -euo pipefail
+        args=(check --base "$RESOLVED_BASE" --format github)
+
+        if [[ -n "$INPUT_COVERAGE" ]]; then
+          args+=(--coverage "$INPUT_COVERAGE")
+        fi
+
+        if [[ "$INPUT_DEEP" == "true" ]]; then
+          if [[ -z "$INPUT_TEST_COMMAND" ]]; then
+            echo "deep=true requires test-command." >&2
+            exit 2
+          fi
+          args+=(--deep --test-command "$INPUT_TEST_COMMAND" --max-probes "$INPUT_MAX_PROBES")
+        fi
+
+        pr-test-guard "${args[@]}"
