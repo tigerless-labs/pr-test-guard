@@ -1,23 +1,21 @@
 # Roadmap
 
-PR Test Guard is moving from an evidence-research prototype into a lightweight PR test-quality tool.
+PR Test Guard is a lightweight PR test-quality tool: run fast checks on a pull-request diff, explain what triggered, and fit naturally into local CLI and CI workflows.
 
-The product direction is intentionally narrow:
-
-> run fast, explain what triggered, surface review signals, and fit naturally into local CLI and CI workflows.
-
-Version `0.1.0` remains pre-release while the public naming and product boundary are stabilized.
+Version `0.1.0` is the first public-ready shape: direct real-PR checking, advisory GitHub Actions integration, static mock-boundary analysis, and optional bounded targeted probes.
 
 ## What Exists in 0.1.0
 
 - `pr-test-guard` / `python -m pr_test_guard` entrypoints;
+- `pr-test-guard check --base <base-ref>` for repository-native PR analysis;
+- optional `coverage.py` XML input for changed-line coverage signals;
+- obvious weak-assertion and test-weakening checks;
+- explicit Python mock-boundary candidates on changed symbols;
+- opt-in bounded targeted probes in an isolated Git worktree;
+- text, JSON, and GitHub Actions output;
+- reusable root `action.yml` with advisory warnings/job summary;
 - executable Python/pytest regression fixtures;
-- changed-line coverage evidence;
-- test-diff and assertion summaries;
-- explicit Python mock-boundary candidates;
-- limited deterministic counterfactual probes;
-- normalized real-PR input bundle validation;
-- JSON and Markdown artifacts for debugging rule behavior.
+- normalized real-PR bundle compatibility for development artifacts.
 
 The fixture runner is development infrastructure for the tool. It is not the product's public benchmark identity.
 
@@ -25,112 +23,69 @@ The fixture runner is development infrastructure for the tool. It is not the pro
 
 ### Lightweight first
 
-Prefer deterministic checks that can run locally or in CI without a hosted service, API key, or large setup burden.
+Prefer deterministic PR-scoped checks that can run locally or in CI without a hosted service or API key.
 
 ### PR first
 
-The primary user context is a pull request: what code changed, what tests changed, what ran, and what obvious test-quality risks deserve review.
+The primary user context is a pull request: what code changed, what tests changed, what ran, and what test-quality risks deserve review.
+
+### Beyond coverage
+
+Patch coverage remains useful, but PR Test Guard should also surface signals that coverage alone cannot answer: obviously weak assertions, mocks that overlap changed paths, and bounded probes that survive the configured tests.
 
 ### Advisory by default
 
-Heuristic signals such as weak assertions or suspicious mocks should default to warnings. Repositories can choose later which high-confidence policies deserve to block merges.
+Heuristic signals default to warnings. Repositories can choose later which high-confidence policies deserve to block merges.
 
 ### CLI core, integrations on top
 
-The analysis logic should live behind a reusable CLI/core. GitHub Actions should wrap that core rather than creating a separate implementation.
+The analysis logic lives behind the reusable CLI/core. GitHub Actions wraps that core rather than creating a separate implementation.
 
-## Stage 1: Rename and Reposition
+## Next: Real-PR Dogfooding
 
-- rename the public project to PR Test Guard;
-- rename package and CLI surfaces;
-- remove benchmark/harness language from the main product story;
-- retain useful existing rule logic and regression fixtures;
-- make README and docs describe the same lightweight PR-checking direction.
-
-## Stage 2: Direct PR Check Command
-
-Add a first repository-native command, for example:
+Run the public rule set on varied real PRs across multiple Python/pytest repositories and record simple reviewer feedback:
 
 ```text
-pr-test-guard check --base <base-ref>
+useful
+false positive
+unclear
+needs more context
 ```
 
-It should initially focus on low-cost inputs:
+Use recurring false-positive patterns to add regression fixtures and tighten rules before expanding the rule family.
 
-- git diff;
-- production/test file changes;
-- assertion/test changes;
-- optional existing coverage report.
+Priority cases:
 
-Avoid requiring a normalized bundle for normal local use.
+- pure refactors with no test changes;
+- existing tests that already cover changed code;
+- legitimate mocks around changed paths;
+- strong assertions that look syntactically simple;
+- test deletion/skip changes with explicit intent;
+- changed code with good coverage but a surviving targeted probe.
 
-## Stage 3: Small Rule Set
+## Next: Output and Policy Controls
 
-Turn the most useful existing logic into explicit, individually configurable rules.
+After dogfooding stabilizes the signals, consider:
 
-Initial candidates:
+- configurable rule enable/disable settings;
+- optional fail-on selected rules or severity;
+- richer GitHub annotations;
+- JSON artifact upload examples;
+- repository path/test mapping configuration.
 
-1. changed production code with no obvious test change;
-2. uncovered changed executable lines when coverage exists;
-3. obvious weak assertion patterns;
-4. suspicious test deletion, skip, xfail, or assertion weakening;
-5. explicit mock candidates on changed behavior paths as warning-only evidence.
+Keep policy separate from detection: the checker identifies signals; the repository decides what blocks a merge.
 
-Each rule should emit:
-
-```text
-rule id
-severity
-file / line when available
-short message
-evidence reference
-```
-
-## Stage 4: GitHub Action
-
-Publish a reusable GitHub Action that invokes the same core CLI on `pull_request` workflows.
-
-First output targets:
-
-- normal workflow logs;
-- GitHub job summary;
-- file/line warnings where supported.
-
-Do not require a backend service.
-
-## Stage 5: Advisory and Enforcement Policy
-
-Add a small configuration surface such as:
-
-```text
-advisory by default
-optional fail-on selected rules or severity
-```
-
-Keep policy separate from detection. The checker identifies signals; the repository decides what blocks a merge.
-
-## Stage 6: False-Positive Reduction
-
-Expand regression fixtures with negative controls and dogfood the rules on real PRs.
-
-Prioritize noisy areas:
-
-- weak assertions;
-- mock boundaries;
-- existing-test coverage when no test file changed;
-- refactors and non-behavioral changes;
-- test deletion/skip intent.
-
-## Stage 7: Broader CI and Language Support
+## Later: Broader Coverage and Language Support
 
 After the GitHub/Python path is stable, consider:
 
-- GitLab or other CI wrappers;
+- per-test coverage mapping;
 - JavaScript/TypeScript test patterns;
-- other coverage formats;
-- repository configuration for path/test mapping.
+- additional coverage formats;
+- GitLab or other CI wrappers;
+- broader but still conservative mock/assertion analysis.
 
-## Stage 8: Optional Semantic Assistance
+## Optional Semantic Assistance
 
 Only after deterministic rules are useful on their own, consider optional semantic assistance for ambiguous mappings.
 
@@ -148,4 +103,5 @@ It should remain:
 - proving overall PR correctness;
 - replacing existing test runners or coverage tools;
 - becoming a general-purpose AI code-review agent;
-- running a hosted service when a local/CI workflow is sufficient.
+- running a hosted service when a local/CI workflow is sufficient;
+- running an unbounded mutation-testing campaign on every PR.

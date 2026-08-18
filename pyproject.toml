@@ -12,12 +12,13 @@ license = { file = "LICENSE" }
 authors = [
   { name = "Tigerless Labs" }
 ]
-dependencies = [
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
   "coverage",
   "pytest"
 ]
-
-[project.optional-dependencies]
 llm = [
   "openai"
 ]
