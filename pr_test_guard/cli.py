@@ -1,4 +1,4 @@
-"""Stable source-tree CLI for Claim Harness."""
+"""Stable source-tree CLI for PR Test Guard."""
 
 from __future__ import annotations
 
@@ -30,25 +30,28 @@ def invoke_script(module_name: str, args: list[str]) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="claim-harness",
-        description="Run Claim Harness curated-case and real-PR-bundle checks.",
+        prog="pr-test-guard",
+        description=(
+            "Run PR Test Guard regression fixtures and real-PR input checks. "
+            "Findings are review signals, not merge verdicts."
+        ),
     )
     parser.add_argument(
         "--version",
         action="store_true",
-        help="print the Claim Harness version and exit",
+        help="print the PR Test Guard version and exit",
     )
 
     subcommands = parser.add_subparsers(dest="command")
 
     validate_cases = subcommands.add_parser(
         "validate-cases",
-        help="validate curated case structure and optionally run patched fixtures",
+        help="validate regression fixture structure and optionally run patched fixtures",
     )
     validate_cases.add_argument(
         "--cases-root",
         default="cases/python",
-        help="directory containing curated cases",
+        help="directory containing regression fixtures",
     )
     validate_cases.add_argument(
         "--run",
@@ -58,18 +61,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     run_cases = subcommands.add_parser(
         "run-cases",
-        help="run curated cases and emit evidence/finding artifacts",
+        help="run regression fixtures and emit test-quality evidence and findings",
     )
     run_cases.add_argument(
         "--cases-root",
         default="cases/python",
-        help="directory containing curated cases",
+        help="directory containing regression fixtures",
     )
     run_cases.add_argument(
         "--case",
         action="append",
         default=[],
-        help="case id to run; may be provided multiple times",
+        help="fixture id to run; may be provided multiple times",
     )
     run_cases.add_argument(
         "--output-dir",
@@ -87,7 +90,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="directory containing real PR bundles",
     )
 
-    subcommands.add_parser("version", help="print the Claim Harness version")
+    subcommands.add_parser("version", help="print the PR Test Guard version")
     return parser
 
 

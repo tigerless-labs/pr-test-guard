@@ -1,22 +1,22 @@
-# Normalized PR Bundle 001
+# Normalized PR Bundle Example
 
-This is a synthetic normalized PR bundle that demonstrates the real-PR input shape.
-It does not represent a real repository, a real pull request, or benchmark ground truth.
+This synthetic bundle demonstrates the current normalized real-PR input shape used while PR Test Guard moves toward a direct CLI and GitHub Action integration.
 
-The bundle shows how PR metadata, a diff, CI summary, claim candidates, and missing
-artifact records can be organized before evidence-chain evaluation.
+It does not represent a real repository, a real pull request, or scored validation data.
 
-## Included
+The bundle contains:
 
-- `bundle.json`: bundle identity and artifact manifest.
-- `pr.json`: synthetic PR metadata.
-- `pr.diff`: synthetic PR diff in unified git format.
-- `ci-summary.md`: synthetic CI check summary.
-- `claim_candidates.json`: reviewable candidate change claims.
-- `missing_artifacts.json`: unavailable artifacts and expected impact.
+- PR metadata and a git-style diff;
+- a small CI summary;
+- optional structured change-intent candidates retained from the original prototype;
+- an explicit list of evidence artifacts that are unavailable.
 
-## Notes
+The example is intentionally provider-neutral at the analysis layer. A future GitHub Action should collect equivalent information from the pull-request event and local checkout, then invoke the same core logic used by the CLI.
 
-This bundle is intentionally small. It validates the normalized input contract
-without implying that Claim Harness can ingest every hosting provider or evaluate
-arbitrary repositories end to end.
+Validate it with:
+
+```bash
+python3 -m pr_test_guard validate-real-pr-bundles
+```
+
+Missing artifacts are recorded instead of guessed. For example, if no coverage report exists, PR Test Guard should say that changed-line coverage was not evaluated rather than treating the lines as uncovered.

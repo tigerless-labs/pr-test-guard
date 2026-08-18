@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "claim-harness"
+name = "pr-test-guard"
 version = "0.1.0"
-description = "Evaluate whether agentic PRs have enough test evidence to support their change claims."
+description = "Lightweight, rule-based test-quality checks for pull requests."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
@@ -23,7 +23,7 @@ llm = [
 ]
 
 [project.scripts]
-claim-harness = "claim_harness.cli:main"
+pr-test-guard = "pr_test_guard.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["claim_harness*"]
+include = ["pr_test_guard*"]

@@ -1,4 +1,4 @@
-"""Module entrypoint for `python -m claim_harness`."""
+"""Module entrypoint for `python -m pr_test_guard`."""
 
 from .cli import main
 

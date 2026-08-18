@@ -2,7 +2,7 @@
   "language": "python",
   "test_framework": "pytest",
   "fixture_kind": "executable_micro_pr",
-  "ground_truth_source": "controlled_construction",
   "case_id": "evidence_complete_001",
-  "case_family": "Evidence Complete"
+  "case_family": "Evidence Complete",
+  "expected_output_source": "controlled_construction"
 }

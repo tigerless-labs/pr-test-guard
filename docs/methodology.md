@@ -1,72 +1,102 @@
 # Methodology
 
-Claim Harness evaluates whether the evidence behind a pull request is adequate for the claims the pull request makes. The intended unit is not a file, line, or test count. The intended unit is a claim-evidence relationship that a reviewer can inspect.
+PR Test Guard is a lightweight PR test-quality checker. It looks for review signals that are easy to miss when a pull request has passing tests or acceptable line coverage but the tests may still be incomplete, weak, mismatched, or over-isolated.
 
-The working frame is:
+The project does **not** try to prove that a PR is correct. Its job is to make test-related review risk easier to inspect.
+
+## Review Unit
+
+The practical unit is a **PR change and the test evidence around it**.
+
+For a changed behavior, PR Test Guard may inspect:
+
+- changed production files and lines;
+- added, modified, removed, skipped, or weakened tests;
+- assertion shapes;
+- changed-line coverage when available;
+- explicit mock or patch boundaries;
+- CI/test-run evidence;
+- optional change-intent text from an issue, PR body, task, or structured fixture.
+
+Change intent can improve mapping, but it is context rather than a requirement for every lightweight rule.
+
+## Rule Philosophy
+
+Rules should prefer signals that are:
+
+1. **Local** — tied to a concrete PR diff, test, assertion, line, or CI artifact.
+2. **Inspectable** — a reviewer can see why the signal fired.
+3. **Deterministic by default** — the default path should not require an LLM.
+4. **Cheap enough for CI** — lightweight checks should not require an expensive benchmark or hosted service.
+5. **Advisory when uncertain** — heuristics should surface risk without pretending to know the final merge decision.
+
+## Evidence Layers
+
+### Test-diff evidence
+
+The cheapest checks compare production-code changes with test changes. Useful signals include:
+
+- production code changed but no test file changed;
+- tests were deleted, skipped, or narrowed;
+- assertions became visibly weaker;
+- a behavioral fix has no obvious nearby test update.
+
+These are review signals, not proof that testing is missing. Existing tests may already cover a change.
+
+### Coverage evidence
+
+Changed-line coverage answers whether changed executable code ran. It is valuable, but it should remain one input rather than the final verdict.
+
+A covered branch can still be backed by a weak assertion. A passing test can still exercise the wrong behavior.
+
+### Assertion evidence
+
+The current Python prototype extracts assertion structure and can flag obvious weak patterns. This is intentionally conservative. An assertion that looks weak syntactically can still be meaningful in a richer test context, so this class of signal should be advisory by default.
+
+### Mock-boundary evidence
+
+Mocks are neutral. The current structural detector only raises a candidate when an explicit patch target overlaps changed code that appears central to the tested path.
+
+A mock candidate should tell a reviewer where to look; it should not automatically fail a PR.
+
+### Counterfactual evidence
+
+The existing prototype can execute a small set of deterministic behavior weakenings and rerun pytest. Surviving probes can strengthen a test-quality warning.
+
+This mechanism is retained as an advanced signal, not as a requirement for the lightweight product direction.
+
+## Finding Model
+
+The current prototype retains these finding families:
+
+- `Missing Test Evidence`
+- `Uncovered Changed Lines`
+- `Weak Assertion`
+- `Issue-Test Mismatch`
+- `Suspicious Fix Without Test`
+- `Mocked Core Path`
+- `CI Scope Weakening`
+- `Counterfactual Survivor`
+- `Evidence Complete`
+
+The public interpretation should be conservative. A finding is a **review signal**. `Evidence Complete` only means that the current fixture did not trigger the targeted evidence-gap rules; it is not a correctness certificate.
+
+## CLI and CI Boundary
+
+The core product should remain callable from a CLI. GitHub Actions is the first automated integration target, not the only runtime.
+
+The intended shape is:
 
 ```text
-change claim -> evidence chain -> counterfactual probe -> mock boundary -> adequacy findings
+PR Test Guard core
+    -> local CLI / arbitrary CI
+    -> GitHub Action wrapper
 ```
 
-## Claim Extraction
+CI integration should be advisory by default. Repositories may later opt into stricter enforcement for specific high-confidence rules or project-defined thresholds.
 
-A change claim is a specific statement about behavior the PR is expected to alter or preserve. Claims may come from an issue, task description, PR body, commit message, code diff, or test name.
+## Current Limits
 
-Examples:
+Version `0.1.0` still uses controlled Python/pytest fixtures to exercise the rule logic. It does not yet provide a general `check` command for arbitrary repositories or a reusable GitHub Action.
 
-- Empty passwords should return HTTP 400 instead of creating an account.
-- Invalid cache metadata should fall back to a cold read.
-- The retry loop should stop after the configured maximum.
-
-Claim extraction should keep claims narrow enough to attach evidence. A broad statement such as "improve auth validation" is less useful than "empty passwords return 400 and do not create a user."
-
-## Evidence Chain
-
-An evidence chain links a claim to the artifacts that support it:
-
-- The code diff that implements the claimed behavior.
-- The test diff or existing tests that exercise it.
-- Assertions that constrain the expected outcome.
-- Coverage spans showing which changed code ran.
-- CI logs showing which test commands ran.
-
-Coverage is necessary evidence in many cases, but it is not sufficient. A line can be covered by a test that only checks that a result exists, never that the intended behavior occurred.
-
-## Coverage Mapping
-
-Coverage mapping asks which changed lines and branches were executed by tests that are relevant to the claim. It helps identify `Uncovered Changed Lines`, but it should not be treated as the final adequacy signal.
-
-Useful coverage questions include:
-
-- Did the changed branch execute at all?
-- Was it executed by a test related to the issue claim?
-- Did the test assert the behavior the branch is supposed to enforce?
-- Did CI run the relevant test target, or only a narrowed subset?
-
-## Counterfactual Probe
-
-A counterfactual probe weakens, removes, or alters the claimed behavior and checks whether the attached tests fail. If tests still pass, the claim may have a `Counterfactual Survivor` finding.
-
-Example:
-
-An issue says empty passwords must return HTTP 400. The PR adds an empty-password branch, and a test executes the branch, but the only assertion is `result is not None`. Coverage says the new branch ran. If a probe removes the empty-password branch and the test still passes, the test did not actually constrain the 400 behavior.
-
-That case is both a `Weak Assertion` and a `Counterfactual Survivor`: the code was covered, but the evidence did not support the claim.
-
-## Mock Boundary Analysis
-
-Mock boundary analysis asks whether a test replaces the core behavior it is supposed to validate. Mocks are not inherently bad; they become evidence problems when they bypass the behavior named in the claim.
-
-Examples:
-
-- A PR claims to fix payment retry behavior, but the test mocks the retry loop itself.
-- A PR claims to harden parser error handling, but the test mocks the parser output.
-- A PR claims a fallback path works, but the test mocks the failing dependency and never asserts the fallback result.
-
-The key question is whether the mocked boundary still leaves a meaningful behavior path under test.
-
-## Adequacy Findings
-
-Findings should be concrete and reviewable. They should point to the claim, the evidence considered, and the reason the evidence is missing, weak, mismatched, or relatively complete.
-
-`Evidence Complete` is deliberately modest. It means the current evidence chain appears adequate for the stated claim under the harness checks. It does not mean the implementation is correct, secure, performant, or ready to merge without human review.
+The immediate engineering goal is therefore not to add more research machinery. It is to extract the useful rule logic into a direct PR-facing workflow while keeping the current fixtures as regression tests.
