@@ -21,16 +21,28 @@ The fixture runner is development infrastructure for the tool. It is not the pro
 
 ## Current Main: PTG005 Semantic Lite
 
-The first post-`0.1.0` precision pass keeps PTG005 deterministic and offline while resolving common Python symbol identity before emitting mock-boundary candidates:
+The post-`0.1.0` PTG005 precision work remains deterministic and offline, but now has two bounded layers.
+
+**Identity resolution**:
 
 - preserve class/method qualified names instead of matching only bare method names;
 - resolve common `import` / `from ... import ... as ...` aliases used by `patch.object`;
 - resolve standard relative imports;
 - normalize common `src/` package layouts;
 - suppress resolved same-name symbols when their canonical identities differ;
-- keep dynamic/unresolved targets conservative rather than guessing.
+- keep dynamic/unresolved targets conservative rather than guessing;
+- avoid treating a class container as changed merely because one of its methods changed.
 
-This layer improves **identity precision**, not business-intent understanding. It still does not decide whether a mock is appropriate; PTG005 remains advisory. Real-PR dogfooding should measure whether the change removes recurring false positives without losing obvious changed-symbol mock cases.
+**Changed-call relationships**:
+
+- keep direct changed-symbol mocks as the highest-confidence PTG005 candidate;
+- inspect only direct calls whose call sites are on lines changed by the PR;
+- only expand indirect PTG005 warnings to tests that are also changed by the PR;
+- recognize direct internal dependencies and report that relationship explicitly;
+- recognize explicitly imported external dependencies and suppress those external-boundary candidates;
+- keep unchanged call sites, untouched tests, deep instance-attribute chains, and other unresolved relationships out of the warning path.
+
+This layer improves **structural relationship precision**, not business-intent understanding. It still does not decide whether a mock is appropriate, build a repository-wide call graph, or infer dynamic Python types. PTG005 remains advisory. Real-PR dogfooding should measure whether the relationship layer removes low-value warnings while retaining direct changed-symbol and changed-internal-dependency cases.
 
 ## Product Principles
 
@@ -71,7 +83,7 @@ Priority cases:
 
 - pure refactors with no test changes;
 - existing tests that already cover changed code;
-- legitimate mocks around changed paths, especially same-name symbols and import aliases;
+- legitimate mocks around changed paths, especially external SDK/API boundaries and internal helpers;
 - strong assertions that look syntactically simple;
 - test deletion/skip changes with explicit intent;
 - changed code with good coverage but a surviving targeted probe.
