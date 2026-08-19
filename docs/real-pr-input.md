@@ -36,7 +36,7 @@ The current Python/pytest path uses:
 - changed production and test files;
 - changed Python lines;
 - changed test assertions and skip/xfail markers;
-- tracked Python tests for structural mock-boundary candidates;
+- tracked Python tests for symbol-resolved mock targets and bounded changed-call relationships;
 - optional `coverage.py` XML;
 - optional explicit test command for bounded targeted probes.
 

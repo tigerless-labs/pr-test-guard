@@ -14,7 +14,14 @@ from pathlib import Path
 from typing import Any
 
 from .finding import Finding
-from .mock_analysis import collect_changed_symbols, extract_mock_targets, match_mock_target
+from .mock_analysis import (
+    MockRelation,
+    classify_dependency_relation,
+    collect_changed_dependency_calls,
+    collect_changed_symbols,
+    extract_mock_targets,
+    match_mock_target,
+)
 
 
 PROBE_REPLACEMENTS: tuple[tuple[str, str, str], ...] = (
@@ -438,21 +445,40 @@ def call_name(node: ast.AST) -> str | None:
     return dotted_name(node.func) if isinstance(node, ast.Call) else None
 
 
-def tracked_test_files(repo_root: Path) -> list[str]:
+def tracked_python_files(repo_root: Path) -> list[str]:
     result = run_command(["git", "ls-files", "*.py"], repo_root, check=True)
-    return [line for line in result.stdout.splitlines() if line and is_test_path(line)]
+    return [line for line in result.stdout.splitlines() if line]
+
+
+def tracked_test_files(repo_root: Path) -> list[str]:
+    return [line for line in tracked_python_files(repo_root) if is_test_path(line)]
 
 
 def mock_boundary_findings(
     repo_root: Path,
     changed: dict[str, list[dict[str, Any]]],
+    files: list[FileDiff],
+    notes: list[str],
 ) -> list[Finding]:
     symbols = collect_changed_symbols(repo_root, changed)
     if not symbols:
         return []
+
+    python_files = tracked_python_files(repo_root)
+    production_python_files = [path for path in python_files if not is_test_path(path)]
+    dependencies = collect_changed_dependency_calls(
+        repo_root,
+        changed,
+        symbols,
+        tracked_python_paths=production_python_files,
+    )
+    changed_test_files = {item.path for item in files if is_test_path(item.path) and item.status != "D"}
+
     findings: list[Finding] = []
     seen: set[tuple[str, int, str]] = set()
-    for rel_path in tracked_test_files(repo_root):
+    suppressed_external = 0
+
+    for rel_path in (line for line in python_files if is_test_path(line)):
         path = repo_root / rel_path
         if not path.is_file():
             continue
@@ -461,30 +487,84 @@ def mock_boundary_findings(
             tree = ast.parse(source)
         except (OSError, SyntaxError, UnicodeDecodeError):
             continue
+
         for target in extract_mock_targets(source, tree, rel_path):
-            matches = match_mock_target(target, symbols)
-            if not matches:
-                continue
             key = (rel_path, target.line, target.raw_target)
             if key in seen:
                 continue
+
+            direct_matches = match_mock_target(target, symbols)
+            if direct_matches:
+                seen.add(key)
+                changed_names = ", ".join(sorted({item.symbol.canonical_name for item in direct_matches}))
+                match_kinds = ", ".join(sorted({item.kind.value for item in direct_matches}))
+                resolved = target.resolved_target or "unresolved"
+                findings.append(
+                    Finding(
+                        rule_id="PTG005",
+                        severity="warning",
+                        file=rel_path,
+                        line=target.line,
+                        message=(
+                            "A mock directly replaces a Python symbol changed by this PR; "
+                            "review whether the real changed behavior is still exercised."
+                        ),
+                        evidence=(
+                            f"relation={MockRelation.DIRECT_CHANGED_SYMBOL.value}; "
+                            f"{target.style} target={target.raw_target}; resolved={resolved}; "
+                            f"match={match_kinds}; changed symbol(s)={changed_names}"
+                        ),
+                    )
+                )
+                continue
+
+            # Relationship expansion is deliberately narrower than direct symbol
+            # matching: only mocks in tests changed by this PR are considered,
+            # and only dependencies called on changed production lines qualify.
+            # This prevents v2 from surfacing a backlog of old mocks in untouched
+            # tests just because a production function changed.
+            if rel_path not in changed_test_files:
+                continue
+
+            relationship = classify_dependency_relation(target, dependencies)
+            if relationship.relation == MockRelation.EXTERNAL_BOUNDARY:
+                suppressed_external += 1
+                seen.add(key)
+                continue
+            if relationship.relation != MockRelation.DIRECT_INTERNAL_DEPENDENCY:
+                continue
+
+            dependency = relationship.dependency
+            owner = relationship.changed_symbol
+            if dependency is None or owner is None:
+                continue
             seen.add(key)
-            changed_names = ", ".join(sorted({item.symbol.canonical_name for item in matches}))
-            match_kinds = ", ".join(sorted({item.kind.value for item in matches}))
             resolved = target.resolved_target or "unresolved"
+            dependency_targets = ", ".join(dependency.candidate_targets)
             findings.append(
                 Finding(
                     rule_id="PTG005",
                     severity="warning",
                     file=rel_path,
                     line=target.line,
-                    message="A resolved mock target overlaps code changed by this PR; review whether the real changed behavior is still exercised.",
+                    message=(
+                        "A changed test mocks an internal dependency called on a line changed by this PR; "
+                        "review whether the changed behavior is still exercised."
+                    ),
                     evidence=(
+                        f"relation={MockRelation.DIRECT_INTERNAL_DEPENDENCY.value}; "
                         f"{target.style} target={target.raw_target}; resolved={resolved}; "
-                        f"match={match_kinds}; changed symbol(s)={changed_names}"
+                        f"changed symbol={owner.canonical_name}; changed call line={dependency.line}; "
+                        f"dependency target(s)={dependency_targets}"
                     ),
                 )
             )
+
+    if suppressed_external:
+        notes.append(
+            "PTG005: suppressed "
+            f"{suppressed_external} external-boundary mock candidate(s) on changed call sites."
+        )
     return findings
 
 def generate_probes(
@@ -620,7 +700,7 @@ def analyze_repository(
     findings.extend(uncovered_line_findings(repo_root, changed, coverage_path, notes))
     findings.extend(weak_assertion_findings(repo_root, files))
     findings.extend(test_weakening_findings(repo_root, files))
-    findings.extend(mock_boundary_findings(repo_root, changed))
+    findings.extend(mock_boundary_findings(repo_root, changed, files, notes))
     probe_findings, probe_summary = targeted_probe_findings(
         repo_root,
         changed,

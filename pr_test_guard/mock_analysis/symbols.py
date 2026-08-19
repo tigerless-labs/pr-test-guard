@@ -53,10 +53,39 @@ class _ChangedSymbolCollector(ast.NodeVisitor):
         self.scope: list[str] = []
         self.symbols: list[PythonSymbol] = []
 
+    @staticmethod
+    def _nested_symbol_spans(node: ast.AST) -> list[tuple[int, int]]:
+        spans: list[tuple[int, int]] = []
+
+        def walk(current: ast.AST) -> None:
+            for child in ast.iter_child_nodes(current):
+                if isinstance(child, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+                    start = getattr(child, "lineno", None)
+                    end = getattr(child, "end_lineno", start)
+                    if start is not None and end is not None:
+                        spans.append((int(start), int(end)))
+                    # The whole nested definition belongs to the nested symbol,
+                    # so there is no need to collect deeper spans here.
+                    continue
+                walk(child)
+
+        walk(node)
+        return spans
+
     def _visit_symbol(self, node: ast.AST, name: str) -> None:
         start = getattr(node, "lineno", None)
         end = getattr(node, "end_lineno", start)
-        if start is not None and end is not None and any(start <= line <= end for line in self.changed_lines):
+        changed_here = False
+        if start is not None and end is not None:
+            nested_spans = self._nested_symbol_spans(node)
+            for line in self.changed_lines:
+                if not (start <= line <= end):
+                    continue
+                if any(nested_start <= line <= nested_end for nested_start, nested_end in nested_spans):
+                    continue
+                changed_here = True
+                break
+        if changed_here:
             qualname = ".".join([*self.scope, name])
             self.symbols.append(
                 PythonSymbol(

@@ -121,7 +121,7 @@ The direct `check` command currently emits six PR-scoped rule families:
 | `PTG002` | A changed Python line is uncovered in the supplied coverage XML. |
 | `PTG003` | A newly added assertion has an obviously weak existence/truthiness shape. |
 | `PTG004` | A test was deleted, skipped/xfail-marked, or lost assertions. |
-| `PTG005` | A resolved Python mock target overlaps a symbol changed by the PR, with conservative handling of unresolved cases. |
+| `PTG005` | A mock directly replaces a changed Python symbol, or a changed test mocks an internal dependency called on a changed production line. |
 | `PTG006` | An opt-in bounded targeted probe survives the configured tests. |
 
 These are review-oriented signals. Heuristic findings such as `PTG003` and `PTG005` are advisory by default rather than automatic reasons to block a merge. The older fixture runner retains its research-prototype labels internally so existing regression cases keep working.
@@ -176,7 +176,7 @@ The reusable `action.yml` calls the same CLI/core. There is no separate hosted a
 
 ## Mock and Probe Boundaries
 
-The current mock detector uses a lightweight Python semantic layer before matching. It recognizes explicit patterns such as `patch`, `patch.object`, `monkeypatch.setattr`, and `mocker.patch`, resolves common import aliases, preserves class/method qualified names, and normalizes common `src/` layouts before comparing a mock target with changed symbols. Unresolved dynamic targets stay conservative. A `PTG005` result is still a **candidate signal**; symbol identity does not prove that a mock is inappropriate.
+The current mock detector uses a lightweight Python semantic layer before matching. It recognizes explicit patterns such as `patch`, `patch.object`, `monkeypatch.setattr`, and `mocker.patch`, resolves common import aliases, preserves class/method qualified names, and normalizes common `src/` layouts. It then adds a bounded relationship pass: direct changed-symbol mocks remain visible, while mocks in tests changed by the PR can also be related to **direct internal dependencies whose call sites are themselves changed by the PR**. Explicit imported dependencies that resolve outside the repository are treated as external-boundary candidates and suppressed from PTG005 warnings. Unchanged call sites, untouched tests, deep instance-attribute chains, and other unresolved dynamic relationships remain conservative. A `PTG005` result is still a **candidate signal**; structural relationship evidence does not prove that a mock is inappropriate.
 
 The targeted probe generator is deliberately limited. It covers a small set of status-code changes, boolean return flips, and comparison-boundary changes on lines added by the current PR. A `PTG006` signal requires an actual rerun of the user-supplied test command in an isolated Git worktree.
 
@@ -224,7 +224,7 @@ Version `0.1.0` supports direct Python/pytest PR analysis from the current Git r
 - uncovered changed Python lines when a coverage XML report is supplied;
 - obvious weak assertions added in changed tests;
 - suspicious test deletion, skip/xfail, or assertion removal;
-- lightweight symbol-resolved mock targets that overlap changed Python symbols;
+- lightweight symbol-resolved mock relationships around changed Python symbols and changed call sites;
 - optional bounded targeted probes that survive an explicit test command.
 
 It still does **not** include:
@@ -236,7 +236,7 @@ It still does **not** include:
 - safe privileged execution of untrusted PR code;
 - GitHub API ingestion or a hosted service.
 
-The next milestone remains real-PR dogfooding: run the rules across varied repositories, record useful / false-positive / unclear signals, and turn recurring false-positive patterns into regression fixtures. PTG005 now resolves common Python symbol/alias relationships first; later work can focus on bounded dependency relationships only where identity resolution is insufficient.
+The next milestone remains real-PR dogfooding: run the rules across varied repositories, record useful / false-positive / unclear signals, and turn recurring false-positive patterns into regression fixtures. PTG005 now combines symbol identity with a deliberately bounded direct-dependency pass; later work should focus on real-PR precision, related-test selection, and only then optional deeper semantic assistance where deterministic relationships remain ambiguous.
 
 ## License
 

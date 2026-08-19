@@ -73,7 +73,7 @@ The direct checker uses six stable rule ids for the current Python/pytest scope:
 - `PTG002` — changed Python line uncovered in a supplied coverage XML;
 - `PTG003` — possible weak assertion added in a changed test;
 - `PTG004` — suspicious test deletion, skip/xfail, or assertion removal;
-- `PTG005` — structural mock target overlaps a changed Python symbol;
+- `PTG005` — a mock directly replaces a changed Python symbol, or a changed test mocks an internal dependency called on a changed production line;
 - `PTG006` — bounded targeted probe survives the configured tests.
 
 Each result includes a rule id, advisory severity, file/line where available, a short message, and evidence text. The older fixture runner retains its research-prototype labels only so existing regression fixtures remain stable during the transition.
