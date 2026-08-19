@@ -19,6 +19,19 @@ Version `0.1.0` is the first public-ready shape: direct real-PR checking, adviso
 
 The fixture runner is development infrastructure for the tool. It is not the product's public benchmark identity.
 
+## Current Main: PTG005 Semantic Lite
+
+The first post-`0.1.0` precision pass keeps PTG005 deterministic and offline while resolving common Python symbol identity before emitting mock-boundary candidates:
+
+- preserve class/method qualified names instead of matching only bare method names;
+- resolve common `import` / `from ... import ... as ...` aliases used by `patch.object`;
+- resolve standard relative imports;
+- normalize common `src/` package layouts;
+- suppress resolved same-name symbols when their canonical identities differ;
+- keep dynamic/unresolved targets conservative rather than guessing.
+
+This layer improves **identity precision**, not business-intent understanding. It still does not decide whether a mock is appropriate; PTG005 remains advisory. Real-PR dogfooding should measure whether the change removes recurring false positives without losing obvious changed-symbol mock cases.
+
 ## Product Principles
 
 ### Lightweight first
@@ -58,7 +71,7 @@ Priority cases:
 
 - pure refactors with no test changes;
 - existing tests that already cover changed code;
-- legitimate mocks around changed paths;
+- legitimate mocks around changed paths, especially same-name symbols and import aliases;
 - strong assertions that look syntactically simple;
 - test deletion/skip changes with explicit intent;
 - changed code with good coverage but a surviving targeted probe.
@@ -85,9 +98,9 @@ After the GitHub/Python path is stable, consider:
 - GitLab or other CI wrappers;
 - broader but still conservative mock/assertion analysis.
 
-## Optional Semantic Assistance
+## Optional Deeper Semantic Assistance
 
-Only after deterministic rules are useful on their own, consider optional semantic assistance for ambiguous mappings.
+Only after deterministic symbol resolution and bounded rule logic are useful on their own, consider optional semantic assistance for ambiguous business-intent mappings.
 
 It should remain:
 
