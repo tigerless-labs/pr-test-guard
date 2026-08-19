@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from .finding import Finding
+from .mock_analysis import collect_changed_symbols, extract_mock_targets, match_mock_target
 
 
 PROBE_REPLACEMENTS: tuple[tuple[str, str, str], ...] = (
@@ -437,70 +438,6 @@ def call_name(node: ast.AST) -> str | None:
     return dotted_name(node.func) if isinstance(node, ast.Call) else None
 
 
-def collect_changed_symbols(
-    repo_root: Path,
-    changed: dict[str, list[dict[str, Any]]],
-) -> list[dict[str, Any]]:
-    symbols: list[dict[str, Any]] = []
-    for rel_path, line_items in changed.items():
-        path = repo_root / rel_path
-        if not path.is_file() or path.suffix != ".py":
-            continue
-        try:
-            source = path.read_text(encoding="utf-8")
-            tree = ast.parse(source)
-        except (OSError, SyntaxError, UnicodeDecodeError):
-            continue
-        changed_lines = {item["line"] for item in line_items}
-        module_name = rel_path.removesuffix(".py").replace("/", ".")
-        short_module = Path(rel_path).stem
-        for node in ast.walk(tree):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                continue
-            start = getattr(node, "lineno", None)
-            end = getattr(node, "end_lineno", start)
-            if start is None or end is None or not any(start <= line <= end for line in changed_lines):
-                continue
-            symbols.append(
-                {
-                    "file": rel_path,
-                    "name": node.name,
-                    "line": start,
-                    "candidate_targets": sorted({node.name, f"{short_module}.{node.name}", f"{module_name}.{node.name}"}),
-                }
-            )
-    return symbols
-
-
-def extract_mock_target(source: str, node: ast.Call) -> tuple[str | None, str | None]:
-    name = call_name(node)
-    if not name:
-        return None, None
-    if name.endswith("patch.object") and len(node.args) >= 2:
-        attr = node.args[1]
-        if isinstance(attr, ast.Constant) and isinstance(attr.value, str):
-            return f"{source_for_node(source, node.args[0])}.{attr.value}", "patch.object"
-    if name == "patch" or name.endswith(".patch"):
-        if node.args and isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
-            return node.args[0].value, "patch"
-    if name.endswith(".setattr") and len(node.args) >= 2:
-        if isinstance(node.args[0], ast.Constant) and isinstance(node.args[0].value, str):
-            return node.args[0].value, "setattr"
-        if isinstance(node.args[1], ast.Constant) and isinstance(node.args[1].value, str):
-            return f"{source_for_node(source, node.args[0])}.{node.args[1].value}", "setattr"
-    return None, None
-
-
-def mock_matches(target: str, candidates: list[str]) -> bool:
-    normalized = target.strip("'\"")
-    return any(
-        normalized == candidate
-        or normalized.endswith(f".{candidate}")
-        or candidate.endswith(f".{normalized}")
-        for candidate in candidates
-    )
-
-
 def tracked_test_files(repo_root: Path) -> list[str]:
     result = run_command(["git", "ls-files", "*.py"], repo_root, check=True)
     return [line for line in result.stdout.splitlines() if line and is_test_path(line)]
@@ -524,30 +461,31 @@ def mock_boundary_findings(
             tree = ast.parse(source)
         except (OSError, SyntaxError, UnicodeDecodeError):
             continue
-        for call in (node for node in ast.walk(tree) if isinstance(node, ast.Call)):
-            target, style = extract_mock_target(source, call)
-            if not target or not style:
+        for target in extract_mock_targets(source, tree, rel_path):
+            matches = match_mock_target(target, symbols)
+            if not matches:
                 continue
-            matched = [symbol for symbol in symbols if mock_matches(target, symbol["candidate_targets"])]
-            if not matched:
-                continue
-            key = (rel_path, call.lineno, target)
+            key = (rel_path, target.line, target.raw_target)
             if key in seen:
                 continue
             seen.add(key)
-            changed_names = ", ".join(sorted({item["name"] for item in matched}))
+            changed_names = ", ".join(sorted({item.symbol.canonical_name for item in matches}))
+            match_kinds = ", ".join(sorted({item.kind.value for item in matches}))
+            resolved = target.resolved_target or "unresolved"
             findings.append(
                 Finding(
                     rule_id="PTG005",
                     severity="warning",
                     file=rel_path,
-                    line=call.lineno,
-                    message="A test mocks a path that overlaps code changed by this PR; review whether the real changed behavior is still exercised.",
-                    evidence=f"{style} target={target}; changed symbol(s)={changed_names}",
+                    line=target.line,
+                    message="A resolved mock target overlaps code changed by this PR; review whether the real changed behavior is still exercised.",
+                    evidence=(
+                        f"{target.style} target={target.raw_target}; resolved={resolved}; "
+                        f"match={match_kinds}; changed symbol(s)={changed_names}"
+                    ),
                 )
             )
     return findings
-
 
 def generate_probes(
     changed: dict[str, list[dict[str, Any]]],

@@ -21,7 +21,7 @@ The project is CLI-first and designed to fit naturally into CI. Its default beha
 
 ## Quick Start
 
-Install from the source tree while `0.1.0` is being prepared for release:
+Install from a source checkout:
 
 ```bash
 python3 -m pip install -e .
@@ -121,7 +121,7 @@ The direct `check` command currently emits six PR-scoped rule families:
 | `PTG002` | A changed Python line is uncovered in the supplied coverage XML. |
 | `PTG003` | A newly added assertion has an obviously weak existence/truthiness shape. |
 | `PTG004` | A test was deleted, skipped/xfail-marked, or lost assertions. |
-| `PTG005` | A structural mock target overlaps a Python symbol changed by the PR. |
+| `PTG005` | A resolved Python mock target overlaps a symbol changed by the PR, with conservative handling of unresolved cases. |
 | `PTG006` | An opt-in bounded targeted probe survives the configured tests. |
 
 These are review-oriented signals. Heuristic findings such as `PTG003` and `PTG005` are advisory by default rather than automatic reasons to block a merge. The older fixture runner retains its research-prototype labels internally so existing regression cases keep working.
@@ -176,7 +176,7 @@ The reusable `action.yml` calls the same CLI/core. There is no separate hosted a
 
 ## Mock and Probe Boundaries
 
-The current mock detector is structural. It recognizes explicit Python patterns such as `patch`, `patch.object`, `monkeypatch.setattr`, and `mocker.patch`, then checks whether the target matches a changed function or class. That produces a **candidate signal**; it does not prove that the mock is wrong.
+The current mock detector uses a lightweight Python semantic layer before matching. It recognizes explicit patterns such as `patch`, `patch.object`, `monkeypatch.setattr`, and `mocker.patch`, resolves common import aliases, preserves class/method qualified names, and normalizes common `src/` layouts before comparing a mock target with changed symbols. Unresolved dynamic targets stay conservative. A `PTG005` result is still a **candidate signal**; symbol identity does not prove that a mock is inappropriate.
 
 The targeted probe generator is deliberately limited. It covers a small set of status-code changes, boolean return flips, and comparison-boundary changes on lines added by the current PR. A `PTG006` signal requires an actual rerun of the user-supplied test command in an isolated Git worktree.
 
@@ -224,19 +224,19 @@ Version `0.1.0` supports direct Python/pytest PR analysis from the current Git r
 - uncovered changed Python lines when a coverage XML report is supplied;
 - obvious weak assertions added in changed tests;
 - suspicious test deletion, skip/xfail, or assertion removal;
-- structural mock targets that overlap changed Python symbols;
+- lightweight symbol-resolved mock targets that overlap changed Python symbols;
 - optional bounded targeted probes that survive an explicit test command.
 
 It still does **not** include:
 
 - configurable merge-blocking enforcement;
 - per-test coverage mapping;
-- broad semantic assertion or mock classification;
+- broad business-intent assertion or mock classification;
 - automatic discovery of every repository's test command;
 - safe privileged execution of untrusted PR code;
 - GitHub API ingestion or a hosted service.
 
-The next milestone is real-PR dogfooding: run the rules across varied repositories, record useful / false-positive / unclear signals, and turn recurring false-positive patterns into regression fixtures before expanding the rule set.
+The next milestone remains real-PR dogfooding: run the rules across varied repositories, record useful / false-positive / unclear signals, and turn recurring false-positive patterns into regression fixtures. PTG005 now resolves common Python symbol/alias relationships first; later work can focus on bounded dependency relationships only where identity resolution is insufficient.
 
 ## License
 
