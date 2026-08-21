@@ -1,14 +1,14 @@
 <h1 align="center">PR Test Guard</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/release-v0.1.0-brightgreen.svg" alt="release v0.1.0" /> <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+" /> <img src="https://img.shields.io/badge/output-JSON%20%7C%20Markdown-lightgrey.svg" alt="JSON and Markdown output" /> <img src="https://img.shields.io/badge/scope-Python%2Fpytest-yellow.svg" alt="Python pytest scope" /> <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="license MIT" />
+  <img src="https://img.shields.io/badge/release-v0.2.0-brightgreen.svg" alt="release v0.2.0" /> <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+" /> <img src="https://img.shields.io/badge/output-JSON%20%7C%20Markdown-lightgrey.svg" alt="JSON and Markdown output" /> <img src="https://img.shields.io/badge/scope-Python%2Fpytest-yellow.svg" alt="Python pytest scope" /> <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="license MIT" />
 </p>
 
 **Lightweight, rule-based test-quality checks for pull requests.**
 
 PR Test Guard helps reviewers spot PRs that look tested but still carry obvious test-quality risks: missing test changes, uncovered changed code, weak assertions, mismatched tests, or mocks that may replace the behavior under review.
 
-The project is CLI-first and designed to fit naturally into CI. Its default behavior is advisory: surface actionable signals for reviewers, and let each repository decide which rules, if any, should become merge-blocking policy. Version `0.1.0` adds direct real-PR analysis and ships the same analyzer as a reusable GitHub Action.
+The project is CLI-first and designed to fit naturally into CI. Its default behavior is advisory: surface actionable signals for reviewers, and let each repository decide which rules, if any, should become merge-blocking policy. Version `0.2.0` adds AST-scoped targeted probe generation on top of the direct real-PR analyzer and reusable GitHub Action.
 
 | | |
 | --- | --- |
@@ -71,7 +71,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: tigerless-labs/pr-test-guard@v0.1.0
+      - uses: tigerless-labs/pr-test-guard@v0.2.0
         with:
           base: origin/${{ github.base_ref }}
 ```
@@ -79,7 +79,7 @@ jobs:
 Coverage and deep probes are opt-in Action inputs. Deep mode assumes the workflow has already installed the target repository's own test dependencies and that the configured test command passes before PR Test Guard runs:
 
 ```yaml
-      - uses: tigerless-labs/pr-test-guard@v0.1.0
+      - uses: tigerless-labs/pr-test-guard@v0.2.0
         with:
           base: origin/${{ github.base_ref }}
           coverage: coverage.xml
@@ -178,7 +178,7 @@ The reusable `action.yml` calls the same CLI/core. There is no separate hosted a
 
 The current mock detector uses a lightweight Python semantic layer before matching. It recognizes explicit patterns such as `patch`, `patch.object`, `monkeypatch.setattr`, and `mocker.patch`, resolves common import aliases, preserves class/method qualified names, and normalizes common `src/` layouts. It then adds a bounded relationship pass: direct changed-symbol mocks remain visible, while mocks in tests changed by the PR can also be related to **direct internal dependencies whose call sites are themselves changed by the PR**. Explicit imported dependencies that resolve outside the repository are treated as external-boundary candidates and suppressed from PTG005 warnings. Unchanged call sites, untouched tests, deep instance-attribute chains, and other unresolved dynamic relationships remain conservative. A `PTG005` result is still a **candidate signal**; structural relationship evidence does not prove that a mock is inappropriate.
 
-The targeted probe generator is deliberately limited. It covers a small set of status-code changes, boolean return flips, and comparison-boundary changes on lines added by the current PR. A `PTG006` signal requires an actual rerun of the user-supplied test command in an isolated Git worktree.
+The targeted probe generator is deliberately limited and AST-scoped. It covers a small set of status-code returns, boolean return flips, and comparison-boundary changes on lines added by the current PR while avoiding string/comment matches and unstable multi-line rewrites. A `PTG006` signal requires an actual rerun of the user-supplied test command in an isolated Git worktree.
 
 These deeper signals are part of the product's differentiation beyond patch coverage. Mock-boundary analysis stays static and advisory. Targeted probes are bounded, PR-scoped, and opt-in through `--deep` because they rerun repository tests. The goal is not a full mutation-testing campaign; it is a small number of review-focused probes against code changed by the current PR.
 
@@ -214,11 +214,11 @@ Patch-coverage tools answer whether changed lines were executed. PR Test Guard k
 - [Rule Fixtures](docs/rule-fixtures.md): how controlled fixtures define expected rule behavior for regression testing.
 - [Validation Strategy](docs/validation-strategy.md): how to validate rule usefulness, false positives, and real-world behavior.
 - [Runner Artifacts](docs/runner-artifacts.md): what the current regression-fixture runner emits.
-- [Roadmap](docs/roadmap.md): the lightweight CLI and GitHub Action path from the current `0.1.0` prototype.
+- [Roadmap](docs/roadmap.md): the lightweight CLI and GitHub Action path from the current `0.2.0` release.
 
 ## Current Scope
 
-Version `0.1.0` supports direct Python/pytest PR analysis from the current Git repository and a reusable advisory GitHub Action. The direct checker currently surfaces:
+Version `0.2.0` supports direct Python/pytest PR analysis from the current Git repository and a reusable advisory GitHub Action. The direct checker currently surfaces:
 
 - production-code changes with no test-file change;
 - uncovered changed Python lines when a coverage XML report is supplied;

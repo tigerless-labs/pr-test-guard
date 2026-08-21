@@ -22,22 +22,7 @@ from .mock_analysis import (
     extract_mock_targets,
     match_mock_target,
 )
-
-
-PROBE_REPLACEMENTS: tuple[tuple[str, str, str], ...] = (
-    ("return 400", "return 200", "weaken HTTP 400 return to success"),
-    ("return 401", "return 200", "weaken HTTP 401 return to success"),
-    ("return 403", "return 200", "weaken HTTP 403 return to success"),
-    ("return 404", "return 200", "weaken HTTP 404 return to success"),
-    ("return 409", "return 200", "weaken HTTP 409 return to success"),
-    ("return 422", "return 200", "weaken HTTP 422 return to success"),
-    ("return 500", "return 200", "weaken HTTP 500 return to success"),
-    ("return False", "return True", "flip false return"),
-    ("return True", "return False", "flip true return"),
-    (" <= ", " < ", "weaken inclusive upper-bound comparison"),
-    (" >= ", " > ", "weaken inclusive lower-bound comparison"),
-    (" == ", " != ", "flip equality comparison"),
-)
+from .probes import generate_probes
 
 
 class CheckError(RuntimeError):
@@ -567,33 +552,6 @@ def mock_boundary_findings(
         )
     return findings
 
-def generate_probes(
-    changed: dict[str, list[dict[str, Any]]],
-    max_probes: int,
-) -> list[dict[str, Any]]:
-    probes: list[dict[str, Any]] = []
-    for rel_path, lines in changed.items():
-        for item in lines:
-            content = item["content"]
-            for original, replacement, rationale in PROBE_REPLACEMENTS:
-                if original not in content:
-                    continue
-                probes.append(
-                    {
-                        "id": f"P{len(probes) + 1}",
-                        "file": rel_path,
-                        "line": item["line"],
-                        "original": original,
-                        "replacement": replacement,
-                        "rationale": rationale,
-                    }
-                )
-                break
-            if len(probes) >= max_probes:
-                return probes
-    return probes
-
-
 def run_shell(command: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, cwd=cwd, shell=True, capture_output=True, text=True)
 
@@ -614,7 +572,7 @@ def targeted_probe_findings(
     if not test_command:
         raise CheckError("--deep requires --test-command so PR Test Guard knows how to rerun the repository tests")
 
-    probes = generate_probes(changed, max_probes=max(1, max_probes))
+    probes = generate_probes(repo_root, changed, max_probes=max(1, max_probes))
     summary = {**empty_summary, "generated": len(probes)}
     if not probes:
         notes.append("PTG006: no supported targeted probe candidate was found in the changed Python lines.")
@@ -657,7 +615,11 @@ def targeted_probe_findings(
                             file=probe["file"],
                             line=probe["line"],
                             message="A bounded targeted probe survived the configured tests; the tests may be insensitive to this changed behavior.",
-                            evidence=f"{probe['original'].strip()} -> {probe['replacement'].strip()} ({probe['rationale']})",
+                            evidence=(
+                                f"kind={probe.get('kind', 'unknown')}; "
+                                f"{probe['original'].strip()} -> {probe['replacement'].strip()} "
+                                f"({probe['rationale']})"
+                            ),
                         )
                     )
         finally:

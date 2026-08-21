@@ -2,16 +2,16 @@
 
 PR Test Guard is a lightweight PR test-quality tool: run fast checks on a pull-request diff, explain what triggered, and fit naturally into local CLI and CI workflows.
 
-Version `0.1.0` is the first public-ready shape: direct real-PR checking, advisory GitHub Actions integration, static mock-boundary analysis, and optional bounded targeted probes.
+Version `0.2.0` keeps the first public-ready shape from `0.1.0` and adds AST-scoped targeted probe generation for the optional deep path.
 
-## What Exists in 0.1.0
+## What Exists in 0.2.0
 
 - `pr-test-guard` / `python -m pr_test_guard` entrypoints;
 - `pr-test-guard check --base <base-ref>` for repository-native PR analysis;
 - optional `coverage.py` XML input for changed-line coverage signals;
 - obvious weak-assertion and test-weakening checks;
 - explicit Python mock-boundary candidates on changed symbols;
-- opt-in bounded targeted probes in an isolated Git worktree;
+- opt-in AST-scoped bounded targeted probes in an isolated Git worktree;
 - text, JSON, and GitHub Actions output;
 - reusable root `action.yml` with advisory warnings/job summary;
 - executable Python/pytest regression fixtures;
@@ -21,7 +21,7 @@ The fixture runner is development infrastructure for the tool. It is not the pro
 
 ## Current Main: PTG005 Semantic Lite
 
-The post-`0.1.0` PTG005 precision work remains deterministic and offline, but now has two bounded layers.
+The PTG005 precision work remains deterministic and offline, with two bounded layers.
 
 **Identity resolution**:
 

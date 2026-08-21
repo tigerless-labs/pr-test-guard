@@ -94,6 +94,6 @@ CI integration should be advisory by default. Repositories may later opt into st
 
 ## Current Limits
 
-Version `0.1.0` now provides a repository-native `check` command and a reusable GitHub Action for the current Python/pytest scope. The checker is intentionally conservative: it does not infer full PR correctness, automatically discover every project's test command, or treat heuristic signals as merge-blocking failures.
+Version `0.2.0` provides a repository-native `check` command, a reusable GitHub Action, and AST-scoped targeted probes for the current Python/pytest scope. The checker is intentionally conservative: it does not infer full PR correctness, automatically discover every project's test command, or treat heuristic signals as merge-blocking failures.
 
 The immediate engineering goal is real-PR dogfooding and false-positive reduction. Controlled fixtures remain regression tests for the tool rather than a public benchmark.
