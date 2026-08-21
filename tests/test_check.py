@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from pathlib import Path
 
 from pr_test_guard.check import analyze_repository
@@ -122,7 +123,7 @@ def test_targeted_probe_survivor_runs_in_isolated_worktree(tmp_path: Path) -> No
         repo,
         base="HEAD~1",
         deep=True,
-        test_command="python -m pytest -q",
+        test_command=f"{sys.executable} -m pytest -q",
         max_probes=1,
     )
     assert "PTG006" in rule_ids(result)

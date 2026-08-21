@@ -94,7 +94,7 @@ Human-readable report for the fixture. Findings are review signals and do not ce
 
 ## Stability
 
-Version `0.1.0` is still pre-release. Artifact fields may evolve as the rule logic is moved into the direct PR-facing CLI.
+Version `0.2.0` remains early. Artifact fields may evolve as the older fixture runner continues to follow the direct PR-facing CLI.
 
 Changes should preserve two properties:
 
