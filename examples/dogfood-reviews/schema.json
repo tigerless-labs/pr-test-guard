@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tigerless-labs/pr-test-guard/examples/dogfood-reviews/schema.json",
+  "title": "PR Test Guard sanitized dogfood review record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "review_id", "source", "environment", "findings"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1"
+    },
+    "review_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["visibility", "repo_alias", "pr_alias"],
+      "properties": {
+        "visibility": {
+          "type": "string",
+          "enum": ["public_sample", "sanitized_private_review"]
+        },
+        "repo_alias": {
+          "type": "string",
+          "pattern": "^repo_[0-9]{3,}$"
+        },
+        "pr_alias": {
+          "type": "string",
+          "pattern": "^pr_[0-9]{3,}$"
+        }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["language", "test_framework", "coverage_supplied", "deep_enabled"],
+      "properties": {
+        "language": {
+          "type": "string",
+          "enum": ["python", "unknown"]
+        },
+        "test_framework": {
+          "type": "string",
+          "enum": ["pytest", "unittest", "mixed", "unknown"]
+        },
+        "coverage_supplied": {
+          "type": "boolean"
+        },
+        "deep_enabled": {
+          "type": "boolean"
+        },
+        "test_command_shape": {
+          "type": "string",
+          "enum": ["pytest", "unittest", "custom", "none", "unknown"]
+        }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rule_id", "review_label", "category", "path_kind", "evidence_shape", "action"],
+        "properties": {
+          "rule_id": {
+            "type": "string",
+            "pattern": "^PTG[0-9]{3}$"
+          },
+          "review_label": {
+            "type": "string",
+            "enum": ["useful", "false_positive", "unclear", "needs_more_context"]
+          },
+          "category": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9_:-]*$"
+          },
+          "path_kind": {
+            "type": "string",
+            "enum": ["production", "test", "docs", "config", "unknown"]
+          },
+          "symbol_kind": {
+            "type": "string",
+            "enum": ["function", "method", "class", "module", "unknown", "none"]
+          },
+          "dependency_kind": {
+            "type": "string",
+            "enum": ["internal", "external", "unknown", "none"]
+          },
+          "evidence_shape": {
+            "type": "string",
+            "minLength": 1
+          },
+          "action": {
+            "type": "string",
+            "enum": ["add_fixture", "tighten_rule", "improve_evidence", "docs_only", "no_change"]
+          }
+        }
+      }
+    }
+  }
+}

@@ -211,6 +211,7 @@ Patch-coverage tools answer whether changed lines were executed. PR Test Guard k
 - [Methodology](docs/methodology.md): the PR-centered evidence model and rule-design principles.
 - [Evaluation Design](docs/evaluation-design.md): how rules are validated without turning the project into a benchmark effort.
 - [Real PR Input](docs/real-pr-input.md): direct repository input, Action usage, optional coverage, and deep-probe boundaries.
+- [Dogfooding](docs/dogfooding.md): how to record shareable real-PR review summaries without committing raw PR details.
 - [Rule Fixtures](docs/rule-fixtures.md): how controlled fixtures define expected rule behavior for regression testing.
 - [Validation Strategy](docs/validation-strategy.md): how to validate rule usefulness, false positives, and real-world behavior.
 - [Runner Artifacts](docs/runner-artifacts.md): what the current regression-fixture runner emits.

@@ -1,0 +1,38 @@
+{
+  "schema_version": "1",
+  "review_id": "sample_001",
+  "source": {
+    "visibility": "public_sample",
+    "repo_alias": "repo_001",
+    "pr_alias": "pr_001"
+  },
+  "environment": {
+    "language": "python",
+    "test_framework": "pytest",
+    "coverage_supplied": true,
+    "deep_enabled": true,
+    "test_command_shape": "pytest"
+  },
+  "findings": [
+    {
+      "rule_id": "PTG005",
+      "review_label": "false_positive",
+      "category": "legitimate_internal_helper_mock",
+      "path_kind": "test",
+      "symbol_kind": "function",
+      "dependency_kind": "internal",
+      "evidence_shape": "changed test mocks dependency called from changed line",
+      "action": "add_fixture"
+    },
+    {
+      "rule_id": "PTG006",
+      "review_label": "useful",
+      "category": "surviving_comparison_boundary_probe",
+      "path_kind": "production",
+      "symbol_kind": "function",
+      "dependency_kind": "none",
+      "evidence_shape": "comparison boundary probe survived configured tests",
+      "action": "no_change"
+    }
+  ]
+}

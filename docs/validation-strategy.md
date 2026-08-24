@@ -52,6 +52,10 @@ needs more context
 
 This is enough to guide early releases. Formal precision/recall studies can be added later if the project develops a research need, but they are not required for the product roadmap.
 
+For public project materials, record shareable summaries rather than raw PR
+exports. Use stable aliases and coarse evidence shapes, and keep repository-
+specific notes outside this repository. See [Dogfooding](dogfooding.md).
+
 ## Layer 4: CI Behavior
 
 Validate that CI integration is safe and unsurprising:
