@@ -1,0 +1,11 @@
+{
+  "claims": [
+    {
+      "id": "C1",
+      "text": "Processing a payload adds source='api' before sending it.",
+      "trigger": "payload is processed",
+      "expected_outcome": "sender receives enriched payload",
+      "source": "issue.md"
+    }
+  ]
+}

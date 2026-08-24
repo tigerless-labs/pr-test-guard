@@ -55,9 +55,9 @@ The current Python prototype extracts assertion structure and can flag obvious w
 
 ### Mock-boundary evidence
 
-Mocks are neutral. The current structural detector only raises a candidate when an explicit patch target overlaps changed code that appears central to the tested path.
+Mocks are neutral. The current structural detector raises a candidate when an explicit patch target overlaps changed code that appears central to the tested path, or when a changed test mocks an internal dependency called on a changed production line without a clear interaction or owner-outcome assertion.
 
-A mock candidate should tell a reviewer where to look; it should not automatically fail a PR.
+A mock candidate should tell a reviewer where to look; it should not automatically fail a PR. A dependency mock that constrains the changed owner's interaction contract, return value, or exception behavior is treated differently from a mock that simply replaces behavior and then makes a weak existence assertion.
 
 ### Counterfactual evidence
 

@@ -19,6 +19,7 @@ from .mock_analysis import (
     classify_dependency_relation,
     collect_changed_dependency_calls,
     collect_changed_symbols,
+    dependency_mock_is_constrained,
     extract_mock_targets,
     match_mock_target,
 )
@@ -458,10 +459,16 @@ def mock_boundary_findings(
         tracked_python_paths=production_python_files,
     )
     changed_test_files = {item.path for item in files if is_test_path(item.path) and item.status != "D"}
+    changed_test_lines = {
+        item.path: {line for line, _ in item.added}
+        for item in files
+        if is_test_path(item.path) and item.status != "D"
+    }
 
     findings: list[Finding] = []
     seen: set[tuple[str, int, str]] = set()
     suppressed_external = 0
+    suppressed_constrained = 0
 
     for rel_path in (line for line in python_files if is_test_path(line)):
         path = repo_root / rel_path
@@ -523,6 +530,16 @@ def mock_boundary_findings(
             owner = relationship.changed_symbol
             if dependency is None or owner is None:
                 continue
+            constraint = dependency_mock_is_constrained(
+                tree,
+                target=target,
+                owner=owner,
+                added_lines=changed_test_lines.get(rel_path, set()),
+            )
+            if constraint.constrained:
+                suppressed_constrained += 1
+                seen.add(key)
+                continue
             seen.add(key)
             resolved = target.resolved_target or "unresolved"
             dependency_targets = ", ".join(dependency.candidate_targets)
@@ -549,6 +566,11 @@ def mock_boundary_findings(
         notes.append(
             "PTG005: suppressed "
             f"{suppressed_external} external-boundary mock candidate(s) on changed call sites."
+        )
+    if suppressed_constrained:
+        notes.append(
+            "PTG005: suppressed "
+            f"{suppressed_constrained} constrained dependency mock candidate(s) with interaction or owner-outcome assertions."
         )
     return findings
 
