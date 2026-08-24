@@ -67,3 +67,11 @@ python3 scripts/summarize_dogfood_reviews.py ~/private/pr-test-guard-dogfood/san
 
 Use the aggregate output to decide whether the next PR should add a regression
 fixture, tighten a rule, improve finding evidence, or only update documentation.
+
+## From Summary to Fixture
+
+When the same sanitized category appears repeatedly as a `false_positive` or
+`unclear` signal, add the smallest public-safe fixture that captures the rule
+boundary. The fixture should use fictional code and stable names, and its
+expected output should define the intended behavior without copying details from
+the original PR.

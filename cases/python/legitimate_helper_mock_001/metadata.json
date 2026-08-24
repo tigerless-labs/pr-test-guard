@@ -1,0 +1,8 @@
+{
+  "language": "python",
+  "test_framework": "pytest",
+  "fixture_kind": "executable_micro_pr",
+  "case_id": "legitimate_helper_mock_001",
+  "case_family": "PTG005 Negative Control",
+  "expected_output_source": "controlled_construction"
+}

@@ -31,6 +31,7 @@ The `claim.json` shape is retained from the original prototype because current r
 - `weak_assertion_001`: exercises an obviously weak assertion pattern.
 - `issue_test_mismatch_001`: exercises a test that covers a different behavior path.
 - `mocked_core_path_001`: exercises an explicit mock that replaces changed behavior.
+- `legitimate_helper_mock_001`: negative control for a dependency mock with an interaction-contract assertion.
 - `evidence_complete_001`: positive control where the targeted behavior is directly asserted.
 
 ## Positive and Negative Controls

@@ -64,6 +64,123 @@ def test_changed_test_mocking_changed_internal_callsite_is_reported(tmp_path: Pa
     assert "dependency target(s)=service.calculate_retry" in (findings[0].evidence or "")
 
 
+def test_internal_dependency_mock_with_interaction_assertion_is_suppressed(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    write(
+        repo / "service.py",
+        "def send_payload(payload):\n    return True\n\n"
+        "def process(payload):\n    return send_payload(payload)\n",
+    )
+    write(repo / "tests/test_service.py", "def test_placeholder():\n    assert True\n")
+    commit_all(repo, "base")
+
+    write(
+        repo / "service.py",
+        "def send_payload(payload):\n    return True\n\n"
+        "def process(payload):\n    enriched = {**payload, 'source': 'api'}\n    return send_payload(enriched)\n",
+    )
+    write(
+        repo / "tests/test_service.py",
+        "from unittest.mock import patch\nfrom service import process\n\n"
+        "@patch('service.send_payload')\n"
+        "def test_process(mock_send):\n"
+        "    mock_send.return_value = True\n"
+        "    assert process({'id': '42'}) is True\n"
+        "    mock_send.assert_called_once_with({'id': '42', 'source': 'api'})\n",
+    )
+    commit_all(repo, "change")
+
+    result = analyze_repository(repo, base="HEAD~1")
+    assert not ptg005(result)
+    notes = [note for note in result.notes if note.startswith("PTG005: suppressed")]
+    assert notes == [
+        "PTG005: suppressed 1 constrained dependency mock candidate(s) with interaction or owner-outcome assertions."
+    ]
+
+
+def test_internal_dependency_mock_with_owner_outcome_assertion_is_suppressed(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    write(
+        repo / "service.py",
+        "def calculate_tax(amount):\n    return amount\n\n"
+        "def total(amount):\n    return calculate_tax(amount)\n",
+    )
+    write(repo / "tests/test_service.py", "def test_placeholder():\n    assert True\n")
+    commit_all(repo, "base")
+
+    write(
+        repo / "service.py",
+        "def calculate_tax(amount):\n    return amount\n\n"
+        "def total(amount):\n    return {'total': amount + calculate_tax(amount)}\n",
+    )
+    write(
+        repo / "tests/test_service.py",
+        "from unittest.mock import patch\nfrom service import total\n\n"
+        "@patch('service.calculate_tax')\n"
+        "def test_total(mock_tax):\n"
+        "    mock_tax.return_value = 2\n"
+        "    result = total(10)\n"
+        "    assert result == {'total': 12}\n",
+    )
+    commit_all(repo, "change")
+
+    assert not ptg005(analyze_repository(repo, base="HEAD~1"))
+
+
+def test_internal_dependency_mock_with_only_weak_assertion_is_still_reported(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    write(
+        repo / "service.py",
+        "def send_payload(payload):\n    return True\n\n"
+        "def process(payload):\n    return True\n",
+    )
+    write(repo / "tests/test_service.py", "def test_placeholder():\n    assert True\n")
+    commit_all(repo, "base")
+
+    write(
+        repo / "service.py",
+        "def send_payload(payload):\n    return True\n\n"
+        "def process(payload):\n    return send_payload(payload)\n",
+    )
+    write(
+        repo / "tests/test_service.py",
+        "from unittest.mock import patch\nfrom service import process\n\n"
+        "@patch('service.send_payload')\n"
+        "def test_process(mock_send):\n"
+        "    mock_send.return_value = True\n"
+        "    result = process({'id': '42'})\n"
+        "    assert result is not None\n",
+    )
+    commit_all(repo, "change")
+
+    findings = ptg005(analyze_repository(repo, base="HEAD~1"))
+    assert len(findings) == 1
+    assert "relation=direct_internal_dependency" in (findings[0].evidence or "")
+
+
+def test_direct_changed_symbol_mock_is_reported_even_with_interaction_assertion(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "service.py", "def charge(amount):\n    return amount > 0\n")
+    write(repo / "tests/test_service.py", "def test_placeholder():\n    assert True\n")
+    commit_all(repo, "base")
+
+    write(repo / "service.py", "def charge(amount):\n    return amount >= 0\n")
+    write(
+        repo / "tests/test_service.py",
+        "from unittest.mock import patch\nfrom service import charge\n\n"
+        "@patch('service.charge')\n"
+        "def test_charge(mock_charge):\n"
+        "    mock_charge.return_value = True\n"
+        "    assert charge(0) is True\n"
+        "    mock_charge.assert_called_once_with(0)\n",
+    )
+    commit_all(repo, "change")
+
+    findings = ptg005(analyze_repository(repo, base="HEAD~1"))
+    assert len(findings) == 1
+    assert "relation=direct_changed_symbol" in (findings[0].evidence or "")
+
+
 def test_patch_where_looked_up_matches_internal_imported_dependency(tmp_path: Path) -> None:
     repo = make_repo(tmp_path)
     write(repo / "src/payment/__init__.py", "")

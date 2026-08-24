@@ -1,0 +1,30 @@
+diff --git a/service.py b/service.py
+--- a/service.py
++++ b/service.py
+@@ -3,4 +3,5 @@
+ 
+ 
+ def process_payload(payload: dict[str, str]) -> bool:
+-    return send_payload(payload)
++    enriched = {**payload, "source": "api"}
++    return send_payload(enriched)
+diff --git a/tests/test_service.py b/tests/test_service.py
+--- a/tests/test_service.py
++++ b/tests/test_service.py
+@@ -1,7 +1,16 @@
++from unittest.mock import patch
++
+ from service import process_payload
+ 
+ 
+ def test_process_payload_sends_original_payload():
+     payload = {"id": "42"}
+ 
+     assert process_payload(payload) is True
++
++
++@patch("service.send_payload")
++def test_process_payload_sends_enriched_payload(mock_send):
++    mock_send.return_value = True
++    assert process_payload({"id": "42"}) is True
++    mock_send.assert_called_once_with({"id": "42", "source": "api"})

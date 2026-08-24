@@ -11,8 +11,10 @@ from .relations import (
     collect_changed_dependency_calls,
 )
 from .symbols import PythonSymbol, collect_changed_symbols, module_name_from_path
+from .test_semantics import BoundaryConstraint, dependency_mock_is_constrained
 
 __all__ = [
+    "BoundaryConstraint",
     "DependencyCall",
     "MatchKind",
     "MockMatch",
@@ -25,6 +27,7 @@ __all__ = [
     "classify_dependency_relation",
     "collect_changed_dependency_calls",
     "collect_changed_symbols",
+    "dependency_mock_is_constrained",
     "extract_mock_targets",
     "match_mock_target",
     "module_name_from_path",

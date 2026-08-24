@@ -1,0 +1,18 @@
+{
+  "case_id": "legitimate_helper_mock_001",
+  "claims": [
+    {
+      "claim_id": "C1",
+      "adequacy": "supported",
+      "findings": [
+        {
+          "type": "Evidence Complete",
+          "evidence_refs": [
+            "repo/tests/test_service.py::test_process_payload_sends_enriched_payload"
+          ],
+          "rationale": "The test mocks the sender boundary but constrains the changed process_payload contract with assert_called_once_with."
+        }
+      ]
+    }
+  ]
+}
