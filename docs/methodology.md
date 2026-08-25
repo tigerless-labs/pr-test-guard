@@ -59,6 +59,8 @@ Mocks are neutral. The current structural detector raises a candidate when an ex
 
 A mock candidate should tell a reviewer where to look; it should not automatically fail a PR. A dependency mock that constrains the changed owner's interaction contract, return value, or exception behavior is treated differently from a mock that simply replaces behavior and then makes a weak existence assertion.
 
+The constrained dependency check is deliberately narrow. It looks for inspectable test evidence such as `assert_called_once_with`, `assert_called_with`, `call_args` / `call_count` assertions, non-weak assertions over the changed owner result, or `pytest.raises` around the owner call. It does not infer full business intent or decide that a mock is inherently appropriate.
+
 ### Counterfactual evidence
 
 The direct checker can execute a small set of deterministic behavior weakenings against changed Python lines. This path is opt-in through `--deep`, requires an explicit test command, and runs in an isolated Git worktree. Surviving probes can strengthen a test-quality warning.
@@ -73,7 +75,7 @@ The direct checker uses six stable rule ids for the current Python/pytest scope:
 - `PTG002` — changed Python line uncovered in a supplied coverage XML;
 - `PTG003` — possible weak assertion added in a changed test;
 - `PTG004` — suspicious test deletion, skip/xfail, or assertion removal;
-- `PTG005` — a mock directly replaces a changed Python symbol, or a changed test mocks an internal dependency called on a changed production line;
+- `PTG005` — a mock directly replaces a changed Python symbol, or a changed test mocks an unconstrained internal dependency called on a changed production line;
 - `PTG006` — bounded targeted probe survives the configured tests.
 
 Each result includes a rule id, advisory severity, file/line where available, a short message, and evidence text. The older fixture runner retains its research-prototype labels only so existing regression fixtures remain stable during the transition.
@@ -94,6 +96,6 @@ CI integration should be advisory by default. Repositories may later opt into st
 
 ## Current Limits
 
-Version `0.2.0` provides a repository-native `check` command, a reusable GitHub Action, and AST-scoped targeted probes for the current Python/pytest scope. The checker is intentionally conservative: it does not infer full PR correctness, automatically discover every project's test command, or treat heuristic signals as merge-blocking failures.
+Version `0.2.1` provides a repository-native `check` command, a reusable GitHub Action, AST-scoped targeted probes, and PTG005 constrained dependency-mock suppression for the current Python/pytest scope. The checker is intentionally conservative: it does not infer full PR correctness, automatically discover every project's test command, or treat heuristic signals as merge-blocking failures.
 
 The immediate engineering goal is real-PR dogfooding and false-positive reduction. Controlled fixtures remain regression tests for the tool rather than a public benchmark.

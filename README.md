@@ -1,14 +1,14 @@
 <h1 align="center">PR Test Guard</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/release-v0.2.0-brightgreen.svg" alt="release v0.2.0" /> <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+" /> <img src="https://img.shields.io/badge/output-JSON%20%7C%20Markdown-lightgrey.svg" alt="JSON and Markdown output" /> <img src="https://img.shields.io/badge/scope-Python%2Fpytest-yellow.svg" alt="Python pytest scope" /> <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="license MIT" />
+  <img src="https://img.shields.io/badge/release-v0.2.1-brightgreen.svg" alt="release v0.2.1" /> <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+" /> <img src="https://img.shields.io/badge/output-JSON%20%7C%20Markdown-lightgrey.svg" alt="JSON and Markdown output" /> <img src="https://img.shields.io/badge/scope-Python%2Fpytest-yellow.svg" alt="Python pytest scope" /> <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="license MIT" />
 </p>
 
 **Lightweight, rule-based test-quality checks for pull requests.**
 
 PR Test Guard helps reviewers spot PRs that look tested but still carry obvious test-quality risks: missing test changes, uncovered changed code, weak assertions, mismatched tests, or mocks that may replace the behavior under review.
 
-The project is CLI-first and designed to fit naturally into CI. Its default behavior is advisory: surface actionable signals for reviewers, and let each repository decide which rules, if any, should become merge-blocking policy. Version `0.2.0` adds AST-scoped targeted probe generation on top of the direct real-PR analyzer and reusable GitHub Action.
+The project is CLI-first and designed to fit naturally into CI. Its default behavior is advisory: surface actionable signals for reviewers, and let each repository decide which rules, if any, should become merge-blocking policy. Version `0.2.1` adds PTG005 false-positive reduction for constrained dependency mocks on top of the direct real-PR analyzer, reusable GitHub Action, and AST-scoped targeted probes.
 
 | | |
 | --- | --- |
@@ -71,7 +71,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: tigerless-labs/pr-test-guard@v0.2.0
+      - uses: tigerless-labs/pr-test-guard@v0.2.1
         with:
           base: origin/${{ github.base_ref }}
 ```
@@ -79,7 +79,7 @@ jobs:
 Coverage and deep probes are opt-in Action inputs. Deep mode assumes the workflow has already installed the target repository's own test dependencies and that the configured test command passes before PR Test Guard runs:
 
 ```yaml
-      - uses: tigerless-labs/pr-test-guard@v0.2.0
+      - uses: tigerless-labs/pr-test-guard@v0.2.1
         with:
           base: origin/${{ github.base_ref }}
           coverage: coverage.xml
@@ -121,18 +121,19 @@ The direct `check` command currently emits six PR-scoped rule families:
 | `PTG002` | A changed Python line is uncovered in the supplied coverage XML. |
 | `PTG003` | A newly added assertion has an obviously weak existence/truthiness shape. |
 | `PTG004` | A test was deleted, skipped/xfail-marked, or lost assertions. |
-| `PTG005` | A mock directly replaces a changed Python symbol, or a changed test mocks an internal dependency called on a changed production line. |
+| `PTG005` | A mock directly replaces a changed Python symbol, or a changed test mocks an unconstrained internal dependency called on a changed production line. |
 | `PTG006` | An opt-in bounded targeted probe survives the configured tests. |
 
 These are review-oriented signals. Heuristic findings such as `PTG003` and `PTG005` are advisory by default rather than automatic reasons to block a merge. The older fixture runner retains its research-prototype labels internally so existing regression cases keep working.
 
 ## Current Runner
 
-The repository ships four executable Python/pytest regression fixtures under `cases/python/`:
+The repository ships executable Python/pytest regression fixtures under `cases/python/`:
 
 - `weak_assertion_001`
 - `issue_test_mismatch_001`
 - `mocked_core_path_001`
+- `legitimate_helper_mock_001`
 - `evidence_complete_001`
 
 Each fixture includes a small PR-like change, executable code, tests, change intent, and expected rule output. The expected output is used for regression testing of the tool itself; it is not presented as a public benchmark or a human-labeled comparison dataset.
@@ -176,7 +177,15 @@ The reusable `action.yml` calls the same CLI/core. There is no separate hosted a
 
 ## Mock and Probe Boundaries
 
-The current mock detector uses a lightweight Python semantic layer before matching. It recognizes explicit patterns such as `patch`, `patch.object`, `monkeypatch.setattr`, and `mocker.patch`, resolves common import aliases, preserves class/method qualified names, and normalizes common `src/` layouts. It then adds a bounded relationship pass: direct changed-symbol mocks remain visible, while mocks in tests changed by the PR can also be related to **direct internal dependencies whose call sites are themselves changed by the PR**. Explicit imported dependencies that resolve outside the repository are treated as external-boundary candidates and suppressed from PTG005 warnings. Unchanged call sites, untouched tests, deep instance-attribute chains, and other unresolved dynamic relationships remain conservative. A `PTG005` result is still a **candidate signal**; structural relationship evidence does not prove that a mock is inappropriate.
+The current mock detector uses a lightweight Python semantic layer before matching. It recognizes explicit patterns such as `patch`, `patch.object`, `monkeypatch.setattr`, and `mocker.patch`, resolves common import aliases, preserves class/method qualified names, and normalizes common `src/` layouts.
+
+PTG005 then applies three bounded layers:
+
+- direct changed-symbol mocks remain the highest-confidence warning;
+- explicitly imported external dependencies are treated as external-boundary candidates and suppressed from warnings;
+- changed tests that mock direct internal dependencies called on changed production lines are warned only when the mock is not constrained by an interaction assertion, owner return assertion, or owner exception assertion.
+
+Unchanged call sites, untouched tests, deep instance-attribute chains, and other unresolved dynamic relationships remain conservative. A `PTG005` result is still a **candidate signal**; structural and test-semantics evidence does not prove that a mock is inappropriate.
 
 The targeted probe generator is deliberately limited and AST-scoped. It covers a small set of status-code returns, boolean return flips, and comparison-boundary changes on lines added by the current PR while avoiding string/comment matches and unstable multi-line rewrites. A `PTG006` signal requires an actual rerun of the user-supplied test command in an isolated Git worktree.
 
@@ -215,17 +224,17 @@ Patch-coverage tools answer whether changed lines were executed. PR Test Guard k
 - [Rule Fixtures](docs/rule-fixtures.md): how controlled fixtures define expected rule behavior for regression testing.
 - [Validation Strategy](docs/validation-strategy.md): how to validate rule usefulness, false positives, and real-world behavior.
 - [Runner Artifacts](docs/runner-artifacts.md): what the current regression-fixture runner emits.
-- [Roadmap](docs/roadmap.md): the lightweight CLI and GitHub Action path from the current `0.2.0` release.
+- [Roadmap](docs/roadmap.md): the lightweight CLI and GitHub Action path from the current `0.2.1` release.
 
 ## Current Scope
 
-Version `0.2.0` supports direct Python/pytest PR analysis from the current Git repository and a reusable advisory GitHub Action. The direct checker currently surfaces:
+Version `0.2.1` supports direct Python/pytest PR analysis from the current Git repository and a reusable advisory GitHub Action. The direct checker currently surfaces:
 
 - production-code changes with no test-file change;
 - uncovered changed Python lines when a coverage XML report is supplied;
 - obvious weak assertions added in changed tests;
 - suspicious test deletion, skip/xfail, or assertion removal;
-- lightweight symbol-resolved mock relationships around changed Python symbols and changed call sites;
+- lightweight symbol-resolved mock relationships around changed Python symbols and changed call sites, with constrained dependency mocks suppressed from PTG005 warnings;
 - optional bounded targeted probes that survive an explicit test command.
 
 It still does **not** include:
@@ -237,7 +246,7 @@ It still does **not** include:
 - safe privileged execution of untrusted PR code;
 - GitHub API ingestion or a hosted service.
 
-The next milestone remains real-PR dogfooding: run the rules across varied repositories, record useful / false-positive / unclear signals, and turn recurring false-positive patterns into regression fixtures. PTG005 now combines symbol identity with a deliberately bounded direct-dependency pass; later work should focus on real-PR precision, related-test selection, and only then optional deeper semantic assistance where deterministic relationships remain ambiguous.
+The next milestone remains real-PR dogfooding: run the rules across varied repositories, record useful / false-positive / unclear signals, and turn recurring false-positive patterns into regression fixtures. PTG005 now combines symbol identity, bounded direct-dependency relationships, and constrained dependency-mock suppression; later work should focus on real-PR precision, related-test selection, and only then optional deeper semantic assistance where deterministic relationships remain ambiguous.
 
 ## License
 

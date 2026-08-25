@@ -2,15 +2,15 @@
 
 PR Test Guard is a lightweight PR test-quality tool: run fast checks on a pull-request diff, explain what triggered, and fit naturally into local CLI and CI workflows.
 
-Version `0.2.0` keeps the first public-ready shape from `0.1.0` and adds AST-scoped targeted probe generation for the optional deep path.
+Version `0.2.1` keeps the first public-ready shape from `0.1.0`, adds AST-scoped targeted probe generation for the optional deep path, and reduces PTG005 false positives for constrained dependency mocks.
 
-## What Exists in 0.2.0
+## What Exists in 0.2.1
 
 - `pr-test-guard` / `python -m pr_test_guard` entrypoints;
 - `pr-test-guard check --base <base-ref>` for repository-native PR analysis;
 - optional `coverage.py` XML input for changed-line coverage signals;
 - obvious weak-assertion and test-weakening checks;
-- explicit Python mock-boundary candidates on changed symbols;
+- explicit Python mock-boundary candidates on changed symbols and unconstrained changed dependency mocks;
 - opt-in AST-scoped bounded targeted probes in an isolated Git worktree;
 - text, JSON, and GitHub Actions output;
 - reusable root `action.yml` with advisory warnings/job summary;
@@ -21,7 +21,7 @@ The fixture runner is development infrastructure for the tool. It is not the pro
 
 ## Current Main: PTG005 Semantic Lite
 
-The PTG005 precision work remains deterministic and offline, with two bounded layers.
+The PTG005 precision work remains deterministic and offline, with three bounded layers.
 
 **Identity resolution**:
 
@@ -42,7 +42,13 @@ The PTG005 precision work remains deterministic and offline, with two bounded la
 - recognize explicitly imported external dependencies and suppress those external-boundary candidates;
 - keep unchanged call sites, untouched tests, deep instance-attribute chains, and other unresolved relationships out of the warning path.
 
-This layer improves **structural relationship precision**, not business-intent understanding. It still does not decide whether a mock is appropriate, build a repository-wide call graph, or infer dynamic Python types. PTG005 remains advisory. Real-PR dogfooding should measure whether the relationship layer removes low-value warnings while retaining direct changed-symbol and changed-internal-dependency cases.
+**Constrained dependency mocks**:
+
+- keep direct changed-symbol mocks as warnings even when the test asserts mock interaction;
+- suppress internal dependency mock candidates when changed tests constrain the owner behavior through mock interaction assertions, owner result assertions, or owner exception assertions;
+- keep weak existence assertions, unconstrained mock return values, and ambiguous owner behavior in the warning path.
+
+This layer improves **structural and test-semantics precision**, not business-intent understanding. It still does not decide whether a mock is appropriate, build a repository-wide call graph, or infer dynamic Python types. PTG005 remains advisory. Real-PR dogfooding should measure whether the relationship layer removes low-value warnings while retaining direct changed-symbol and unconstrained changed-internal-dependency cases.
 
 ## Product Principles
 
