@@ -62,7 +62,7 @@ The Action emits GitHub warning annotations and appends a job summary. Findings 
 
 `--deep` is opt-in because it executes the repository's configured test command. PR Test Guard first creates an isolated Git worktree at `HEAD`, verifies that the unmodified test command passes, and only then applies a bounded number of supported probes.
 
-This is intentionally different from a full mutation-testing campaign: the probe set is small, scoped to changed Python lines, and used as reviewer evidence rather than as a repository-wide mutation score.
+This is intentionally different from a full mutation-testing campaign: the probe set is small, scoped to changed Python lines, and used as reviewer evidence rather than as a repository-wide mutation score. Killed probes are treated as useful test sensitivity and do not produce PTG006 warnings. Unsupported probe shapes are skipped rather than guessed.
 
 ## Normalized Bundle Compatibility
 

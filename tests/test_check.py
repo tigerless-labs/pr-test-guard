@@ -132,6 +132,94 @@ def test_targeted_probe_survivor_runs_in_isolated_worktree(tmp_path: Path) -> No
     assert run_worktree_list(repo) == 1
 
 
+def test_strong_status_assertion_kills_targeted_probe(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "app.py", "def status(ok):\n    return 400\n")
+    write(repo / "tests/test_app.py", "from app import status\n\ndef test_status():\n    assert status(False) == 400\n")
+    commit_all(repo, "base")
+
+    write(repo / "app.py", "def status(ok):\n    if not ok:\n        return 400\n    return 200\n")
+    write(
+        repo / "tests/test_app.py",
+        "from app import status\n\n"
+        "def test_status():\n    assert status(False) == 400\n\n"
+        "def test_success_status():\n    assert status(True) == 200\n",
+    )
+    commit_all(repo, "add branch")
+
+    result = analyze_repository(
+        repo,
+        base="HEAD~1",
+        deep=True,
+        test_command=f"{sys.executable} -m pytest -q",
+        max_probes=1,
+    )
+    assert "PTG006" not in rule_ids(result)
+    assert result.probe_summary["baseline_passed"] is True
+    assert result.probe_summary["generated"] == 1
+    assert result.probe_summary["applied"] == 1
+    assert result.probe_summary["survived"] == 0
+    assert run_worktree_list(repo) == 1
+
+
+def test_targeted_probe_skips_when_baseline_command_fails(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "app.py", "def status():\n    return 200\n")
+    write(repo / "tests/test_app.py", "from app import status\n\ndef test_status():\n    assert status() == 200\n")
+    commit_all(repo, "base")
+
+    write(repo / "app.py", "def status():\n    return 404\n")
+    write(repo / "tests/test_app.py", "from app import status\n\ndef test_status():\n    assert status() == 200\n")
+    commit_all(repo, "break status")
+
+    result = analyze_repository(
+        repo,
+        base="HEAD~1",
+        deep=True,
+        test_command=f"{sys.executable} -m pytest -q",
+        max_probes=1,
+    )
+    assert "PTG006" not in rule_ids(result)
+    assert result.probe_summary["baseline_passed"] is False
+    assert result.probe_summary["generated"] == 1
+    assert result.probe_summary["applied"] == 0
+    assert result.probe_summary["survived"] == 0
+    assert "PTG006 skipped: the configured test command fails on the unmodified PR checkout." in result.notes
+    assert run_worktree_list(repo) == 1
+
+
+def test_targeted_probe_respects_max_probes_limit(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "app.py", "def missing():\n    return 404\n\ndef forbidden():\n    return 403\n")
+    write(
+        repo / "tests/test_app.py",
+        "from app import forbidden, missing\n\n"
+        "def test_statuses():\n    assert missing() is not None\n    assert forbidden() is not None\n",
+    )
+    commit_all(repo, "base")
+
+    write(repo / "app.py", "def missing():\n    return 404\n\ndef forbidden():\n    return 403\n\ndef changed():\n    return True\n")
+    write(
+        repo / "tests/test_app.py",
+        "from app import changed, forbidden, missing\n\n"
+        "def test_statuses():\n    assert missing() is not None\n    assert forbidden() is not None\n    assert changed() is not None\n",
+    )
+    commit_all(repo, "add changed probes")
+
+    result = analyze_repository(
+        repo,
+        base="HEAD~1",
+        deep=True,
+        test_command=f"{sys.executable} -m pytest -q",
+        max_probes=1,
+    )
+    assert result.probe_summary["generated"] == 1
+    assert result.probe_summary["applied"] == 1
+    assert result.probe_summary["survived"] == 1
+    assert len([item for item in result.findings if item.rule_id == "PTG006"]) == 1
+    assert run_worktree_list(repo) == 1
+
+
 def run_worktree_list(repo: Path) -> int:
     result = subprocess.run(
         ["git", "worktree", "list", "--porcelain"],

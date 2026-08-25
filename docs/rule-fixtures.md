@@ -49,6 +49,7 @@ Examples worth adding include:
 - behavior change with existing-test coverage vs. truly missing tests;
 - legitimate dependency mock vs. mocked core behavior;
 - weak non-null assertion vs. a non-null assertion that is actually the intended contract;
+- targeted probe survivor vs. a nearby test that kills the same probe;
 - intentional test deletion vs. suspicious coverage reduction.
 
 These controls are more useful for product quality than a large synthetic leaderboard.
