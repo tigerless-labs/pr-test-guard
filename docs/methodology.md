@@ -65,7 +65,7 @@ The constrained dependency check is deliberately narrow. It looks for inspectabl
 
 The direct checker can execute a small set of deterministic behavior weakenings against changed Python lines. This path is opt-in through `--deep`, requires an explicit test command, and runs in an isolated Git worktree. Surviving probes can strengthen a test-quality warning.
 
-This is a bounded PR-scoped signal, not a full mutation-testing campaign or repository-wide mutation score.
+This is a bounded PR-scoped signal, not a full mutation-testing campaign or repository-wide mutation score. A generated probe is only a candidate. If the baseline test command fails, PTG006 is skipped. If the configured tests kill the probe, no warning is emitted. Unsupported shapes such as response constructors, symbolic HTTP status constants, and unstable multi-line rewrites remain quiet by design.
 
 ## Finding Model
 

@@ -578,6 +578,17 @@ def run_shell(command: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, cwd=cwd, shell=True, capture_output=True, text=True)
 
 
+def remove_python_bytecode(path: Path) -> None:
+    pycache = path.parent / "__pycache__"
+    if not pycache.is_dir():
+        return
+    for compiled in pycache.glob(f"{path.stem}.*.pyc"):
+        try:
+            compiled.unlink()
+        except OSError:
+            pass
+
+
 def targeted_probe_findings(
     repo_root: Path,
     changed: dict[str, list[dict[str, Any]]],
@@ -625,9 +636,11 @@ def targeted_probe_findings(
                     continue
                 lines[index] = lines[index].replace(probe["original"], probe["replacement"], 1)
                 path.write_text("".join(lines), encoding="utf-8")
+                remove_python_bytecode(path)
                 summary["applied"] += 1
                 result = run_shell(test_command, worktree)
                 path.write_text(original_text, encoding="utf-8")
+                remove_python_bytecode(path)
                 if result.returncode == 0:
                     summary["survived"] += 1
                     findings.append(

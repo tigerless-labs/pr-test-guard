@@ -187,7 +187,7 @@ PTG005 then applies three bounded layers:
 
 Unchanged call sites, untouched tests, deep instance-attribute chains, and other unresolved dynamic relationships remain conservative. A `PTG005` result is still a **candidate signal**; structural and test-semantics evidence does not prove that a mock is inappropriate.
 
-The targeted probe generator is deliberately limited and AST-scoped. It covers a small set of status-code returns, boolean return flips, and comparison-boundary changes on lines added by the current PR while avoiding string/comment matches and unstable multi-line rewrites. A `PTG006` signal requires an actual rerun of the user-supplied test command in an isolated Git worktree.
+The targeted probe generator is deliberately limited and AST-scoped. It covers a small set of status-code returns, boolean return flips, and comparison-boundary changes on lines added by the current PR while avoiding string/comment matches and unstable multi-line rewrites. A generated probe is not itself a finding: `PTG006` is emitted only when the configured tests pass at baseline and a supported probe survives an actual rerun in an isolated Git worktree.
 
 These deeper signals are part of the product's differentiation beyond patch coverage. Mock-boundary analysis stays static and advisory. Targeted probes are bounded, PR-scoped, and opt-in through `--deep` because they rerun repository tests. The goal is not a full mutation-testing campaign; it is a small number of review-focused probes against code changed by the current PR.
 
