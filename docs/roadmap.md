@@ -2,9 +2,9 @@
 
 PR Test Guard is a lightweight PR test-quality tool: run fast checks on a pull-request diff, explain what triggered, and fit naturally into local CLI and CI workflows.
 
-Version `0.2.1` keeps the first public-ready shape from `0.1.0`, adds AST-scoped targeted probe generation for the optional deep path, and reduces PTG005 false positives for constrained dependency mocks.
+Version `0.2.2` keeps the first public-ready shape from `0.1.0`, adds AST-scoped targeted probe generation for the optional deep path, reduces PTG005 false positives for constrained dependency mocks, and fixes PTG006 rerun correctness around stale Python bytecode.
 
-## What Exists in 0.2.1
+## What Exists in 0.2.2
 
 - `pr-test-guard` / `python -m pr_test_guard` entrypoints;
 - `pr-test-guard check --base <base-ref>` for repository-native PR analysis;
