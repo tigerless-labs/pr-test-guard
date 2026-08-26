@@ -1,0 +1,11 @@
+{
+  "claims": [
+    {
+      "id": "C1",
+      "text": "Quoting a customer should use the helper-computed price in the returned quote.",
+      "trigger": "customer quote is requested",
+      "expected_outcome": "quote contains helper-computed price",
+      "source": "issue.md"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "case_id": "unconstrained_helper_mock_001",
+  "claims": [
+    {
+      "claim_id": "C1",
+      "adequacy": "weak",
+      "findings": [
+        {
+          "type": "Weak Assertion",
+          "evidence_refs": [
+            "repo/tests/test_order_service.py:13"
+          ],
+          "rationale": "The changed test mocks the helper dependency and only asserts that the owner call returns a non-null value. The direct checker treats this as a PTG005 dependency-mock warning; the legacy fixture runner records the weak assertion signal."
+        }
+      ]
+    }
+  ]
+}

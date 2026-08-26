@@ -1,0 +1,23 @@
+diff --git a/order_service.py b/order_service.py
+--- a/order_service.py
++++ b/order_service.py
+@@ -5,2 +5,2 @@
+ def quote(customer_id: str) -> dict[str, int | str]:
+-    return {"customer_id": customer_id, "price": 10}
++    return {"customer_id": customer_id, "price": price_for_customer(customer_id)}
+diff --git a/tests/test_order_service.py b/tests/test_order_service.py
+--- a/tests/test_order_service.py
++++ b/tests/test_order_service.py
+@@ -1 +1,3 @@
++from unittest.mock import patch
++
+ from order_service import quote
+@@ -4,2 +6,8 @@
+ def test_quote_returns_base_price():
+     assert quote("cust_001") == {"customer_id": "cust_001", "price": 10}
++
++
++@patch("order_service.price_for_customer")
++def test_quote_has_any_price(mock_price):
++    mock_price.return_value = 12
++    assert quote("cust_001") is not None

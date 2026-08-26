@@ -129,6 +129,13 @@ def test_targeted_probe_survivor_runs_in_isolated_worktree(tmp_path: Path) -> No
     assert "PTG006" in rule_ids(result)
     assert result.probe_summary["baseline_passed"] is True
     assert result.probe_summary["survived"] == 1
+    findings = [item for item in result.findings if item.rule_id == "PTG006"]
+    assert len(findings) == 1
+    evidence = findings[0].evidence or ""
+    assert "baseline_passed=true" in evidence
+    assert "probe_id=P1" in evidence
+    assert "kind=return_status_code" in evidence
+    assert "mutation=return 400 -> return 200" in evidence
     assert run_worktree_list(repo) == 1
 
 

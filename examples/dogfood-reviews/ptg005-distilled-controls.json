@@ -1,0 +1,38 @@
+{
+  "schema_version": "1",
+  "review_id": "ptg005_distilled_controls_001",
+  "source": {
+    "visibility": "sanitized_private_review",
+    "repo_alias": "repo_002",
+    "pr_alias": "pr_001"
+  },
+  "environment": {
+    "language": "python",
+    "test_framework": "pytest",
+    "coverage_supplied": false,
+    "deep_enabled": false,
+    "test_command_shape": "pytest"
+  },
+  "findings": [
+    {
+      "rule_id": "PTG005",
+      "review_label": "useful",
+      "category": "unconstrained_internal_helper_mock",
+      "path_kind": "test",
+      "symbol_kind": "function",
+      "dependency_kind": "internal",
+      "evidence_shape": "changed test mocks dependency called from changed line without owner outcome assertion",
+      "action": "keep_rule_behavior"
+    },
+    {
+      "rule_id": "PTG005",
+      "review_label": "false_positive",
+      "category": "constrained_internal_helper_mock",
+      "path_kind": "test",
+      "symbol_kind": "function",
+      "dependency_kind": "internal",
+      "evidence_shape": "changed test mocks dependency called from changed line and constrains owner behavior",
+      "action": "add_fixture"
+    }
+  ]
+}

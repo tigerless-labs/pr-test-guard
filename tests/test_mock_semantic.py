@@ -123,7 +123,7 @@ def test_src_layout_uses_importable_module_name(tmp_path: Path) -> None:
 
     findings = ptg005(analyze_repository(repo, base="HEAD~1"))
     assert len(findings) == 1
-    assert "changed symbol(s)=foo.service.charge" in (findings[0].evidence or "")
+    assert "changed_symbol(s)=foo.service.charge" in (findings[0].evidence or "")
 
 
 def test_module_alias_resolves_patch_object_owner(tmp_path: Path) -> None:

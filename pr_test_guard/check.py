@@ -440,6 +440,26 @@ def tracked_test_files(repo_root: Path) -> list[str]:
     return [line for line in tracked_python_files(repo_root) if is_test_path(line)]
 
 
+def mock_relation_evidence(
+    *,
+    relation: MockRelation,
+    style: str,
+    target: str,
+    resolved: str | None,
+    review_reason: str,
+    details: dict[str, str],
+) -> str:
+    parts = [
+        f"relation={relation.value}",
+        f"style={style}",
+        f"target={target}",
+        f"resolved={resolved or 'unresolved'}",
+        f"review_reason={review_reason}",
+    ]
+    parts.extend(f"{key}={value}" for key, value in details.items())
+    return "; ".join(parts)
+
+
 def mock_boundary_findings(
     repo_root: Path,
     changed: dict[str, list[dict[str, Any]]],
@@ -468,7 +488,7 @@ def mock_boundary_findings(
     findings: list[Finding] = []
     seen: set[tuple[str, int, str]] = set()
     suppressed_external = 0
-    suppressed_constrained = 0
+    suppressed_constrained: dict[str, int] = {}
 
     for rel_path in (line for line in python_files if is_test_path(line)):
         path = repo_root / rel_path
@@ -501,10 +521,16 @@ def mock_boundary_findings(
                             "A mock directly replaces a Python symbol changed by this PR; "
                             "review whether the real changed behavior is still exercised."
                         ),
-                        evidence=(
-                            f"relation={MockRelation.DIRECT_CHANGED_SYMBOL.value}; "
-                            f"{target.style} target={target.raw_target}; resolved={resolved}; "
-                            f"match={match_kinds}; changed symbol(s)={changed_names}"
+                        evidence=mock_relation_evidence(
+                            relation=MockRelation.DIRECT_CHANGED_SYMBOL,
+                            style=target.style,
+                            target=target.raw_target,
+                            resolved=resolved,
+                            review_reason="mock_replaces_changed_symbol",
+                            details={
+                                "match": match_kinds,
+                                "changed_symbol(s)": changed_names,
+                            },
                         ),
                     )
                 )
@@ -537,7 +563,7 @@ def mock_boundary_findings(
                 added_lines=changed_test_lines.get(rel_path, set()),
             )
             if constraint.constrained:
-                suppressed_constrained += 1
+                suppressed_constrained[constraint.reason] = suppressed_constrained.get(constraint.reason, 0) + 1
                 seen.add(key)
                 continue
             seen.add(key)
@@ -553,11 +579,17 @@ def mock_boundary_findings(
                         "A changed test mocks an internal dependency called on a line changed by this PR; "
                         "review whether the changed behavior is still exercised."
                     ),
-                    evidence=(
-                        f"relation={MockRelation.DIRECT_INTERNAL_DEPENDENCY.value}; "
-                        f"{target.style} target={target.raw_target}; resolved={resolved}; "
-                        f"changed symbol={owner.canonical_name}; changed call line={dependency.line}; "
-                        f"dependency target(s)={dependency_targets}"
+                    evidence=mock_relation_evidence(
+                        relation=MockRelation.DIRECT_INTERNAL_DEPENDENCY,
+                        style=target.style,
+                        target=target.raw_target,
+                        resolved=resolved,
+                        review_reason="changed_test_mocks_dependency_called_on_changed_line",
+                        details={
+                            "changed_symbol": owner.canonical_name,
+                            "changed_call_line": str(dependency.line),
+                            "dependency_target(s)": dependency_targets,
+                        },
                     ),
                 )
             )
@@ -568,9 +600,12 @@ def mock_boundary_findings(
             f"{suppressed_external} external-boundary mock candidate(s) on changed call sites."
         )
     if suppressed_constrained:
+        reasons = ", ".join(f"{reason}={count}" for reason, count in sorted(suppressed_constrained.items()))
+        total = sum(suppressed_constrained.values())
         notes.append(
             "PTG005: suppressed "
-            f"{suppressed_constrained} constrained dependency mock candidate(s) with interaction or owner-outcome assertions."
+            f"{total} constrained dependency mock candidate(s) with interaction or owner-outcome assertions "
+            f"({reasons})."
         )
     return findings
 
@@ -651,9 +686,11 @@ def targeted_probe_findings(
                             line=probe["line"],
                             message="A bounded targeted probe survived the configured tests; the tests may be insensitive to this changed behavior.",
                             evidence=(
+                                "baseline_passed=true; "
+                                f"probe_id={probe.get('id', 'unknown')}; "
                                 f"kind={probe.get('kind', 'unknown')}; "
-                                f"{probe['original'].strip()} -> {probe['replacement'].strip()} "
-                                f"({probe['rationale']})"
+                                f"mutation={probe['original'].strip()} -> {probe['replacement'].strip()}; "
+                                f"rationale={probe['rationale']}"
                             ),
                         )
                     )

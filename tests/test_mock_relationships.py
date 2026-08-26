@@ -59,9 +59,11 @@ def test_changed_test_mocking_changed_internal_callsite_is_reported(tmp_path: Pa
 
     findings = ptg005(analyze_repository(repo, base="HEAD~1"))
     assert len(findings) == 1
-    assert "relation=direct_internal_dependency" in (findings[0].evidence or "")
-    assert "changed symbol=service.charge" in (findings[0].evidence or "")
-    assert "dependency target(s)=service.calculate_retry" in (findings[0].evidence or "")
+    evidence = findings[0].evidence or ""
+    assert "relation=direct_internal_dependency" in evidence
+    assert "review_reason=changed_test_mocks_dependency_called_on_changed_line" in evidence
+    assert "changed_symbol=service.charge" in evidence
+    assert "dependency_target(s)=service.calculate_retry" in evidence
 
 
 def test_internal_dependency_mock_with_interaction_assertion_is_suppressed(tmp_path: Path) -> None:
@@ -94,7 +96,7 @@ def test_internal_dependency_mock_with_interaction_assertion_is_suppressed(tmp_p
     assert not ptg005(result)
     notes = [note for note in result.notes if note.startswith("PTG005: suppressed")]
     assert notes == [
-        "PTG005: suppressed 1 constrained dependency mock candidate(s) with interaction or owner-outcome assertions."
+        "PTG005: suppressed 1 constrained dependency mock candidate(s) with interaction or owner-outcome assertions (interaction_assertion=1)."
     ]
 
 
@@ -155,7 +157,9 @@ def test_internal_dependency_mock_with_only_weak_assertion_is_still_reported(tmp
 
     findings = ptg005(analyze_repository(repo, base="HEAD~1"))
     assert len(findings) == 1
-    assert "relation=direct_internal_dependency" in (findings[0].evidence or "")
+    evidence = findings[0].evidence or ""
+    assert "relation=direct_internal_dependency" in evidence
+    assert "review_reason=changed_test_mocks_dependency_called_on_changed_line" in evidence
 
 
 def test_direct_changed_symbol_mock_is_reported_even_with_interaction_assertion(tmp_path: Path) -> None:
@@ -178,7 +182,9 @@ def test_direct_changed_symbol_mock_is_reported_even_with_interaction_assertion(
 
     findings = ptg005(analyze_repository(repo, base="HEAD~1"))
     assert len(findings) == 1
-    assert "relation=direct_changed_symbol" in (findings[0].evidence or "")
+    evidence = findings[0].evidence or ""
+    assert "relation=direct_changed_symbol" in evidence
+    assert "review_reason=mock_replaces_changed_symbol" in evidence
 
 
 def test_patch_where_looked_up_matches_internal_imported_dependency(tmp_path: Path) -> None:
@@ -210,6 +216,7 @@ def test_patch_where_looked_up_matches_internal_imported_dependency(tmp_path: Pa
     assert len(findings) == 1
     evidence = findings[0].evidence or ""
     assert "relation=direct_internal_dependency" in evidence
+    assert "review_reason=changed_test_mocks_dependency_called_on_changed_line" in evidence
     assert "payment.retry.calculate_retry" in evidence
     assert "payment.service.calculate_retry" in evidence
 
@@ -380,6 +387,80 @@ def test_self_method_call_on_changed_line_is_internal_dependency(tmp_path: Path)
     assert len(findings) == 1
     assert "relation=direct_internal_dependency" in (findings[0].evidence or "")
     assert "service.PaymentService.normalize" in (findings[0].evidence or "")
+
+
+def test_dogfood_distilled_unconstrained_helper_mock_is_reported_with_context(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    write(
+        repo / "order_service.py",
+        "def price_for_customer(customer_id):\n    return 10\n\n"
+        "def quote(customer_id):\n    return price_for_customer(customer_id)\n",
+    )
+    write(repo / "tests/test_order_service.py", "def test_placeholder():\n    assert True\n")
+    commit_all(repo, "base")
+
+    write(
+        repo / "order_service.py",
+        "def price_for_customer(customer_id):\n    return 10\n\n"
+        "def quote(customer_id):\n    price = price_for_customer(customer_id)\n    return {'customer_id': customer_id, 'price': price}\n",
+    )
+    write(
+        repo / "tests/test_order_service.py",
+        "from unittest.mock import patch\nfrom order_service import quote\n\n"
+        "@patch('order_service.price_for_customer')\n"
+        "def test_quote(mock_price):\n"
+        "    mock_price.return_value = 12\n"
+        "    result = quote('cust_001')\n"
+        "    assert result is not None\n",
+    )
+    commit_all(repo, "change")
+
+    findings = ptg005(analyze_repository(repo, base="HEAD~1"))
+
+    assert len(findings) == 1
+    evidence = findings[0].evidence or ""
+    assert "relation=direct_internal_dependency" in evidence
+    assert "review_reason=changed_test_mocks_dependency_called_on_changed_line" in evidence
+    assert "changed_symbol=order_service.quote" in evidence
+    assert "changed_call_line=5" in evidence
+    assert "dependency_target(s)=order_service.price_for_customer" in evidence
+
+
+def test_dogfood_distilled_helper_mock_with_owner_exception_assertion_is_suppressed(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    write(
+        repo / "order_service.py",
+        "class EmptyQuote(ValueError):\n    pass\n\n"
+        "def price_for_customer(customer_id):\n    return 10\n\n"
+        "def quote(customer_id):\n    return price_for_customer(customer_id)\n",
+    )
+    write(repo / "tests/test_order_service.py", "def test_placeholder():\n    assert True\n")
+    commit_all(repo, "base")
+
+    write(
+        repo / "order_service.py",
+        "class EmptyQuote(ValueError):\n    pass\n\n"
+        "def price_for_customer(customer_id):\n    return 10\n\n"
+        "def quote(customer_id):\n    price = price_for_customer(customer_id)\n    if price <= 0:\n        raise EmptyQuote('missing price')\n    return price\n",
+    )
+    write(
+        repo / "tests/test_order_service.py",
+        "from unittest.mock import patch\nimport pytest\nfrom order_service import EmptyQuote, quote\n\n"
+        "@patch('order_service.price_for_customer')\n"
+        "def test_quote_rejects_empty_price(mock_price):\n"
+        "    mock_price.return_value = 0\n"
+        "    with pytest.raises(EmptyQuote):\n"
+        "        quote('cust_001')\n",
+    )
+    commit_all(repo, "change")
+
+    result = analyze_repository(repo, base="HEAD~1")
+
+    assert not ptg005(result)
+    notes = [note for note in result.notes if note.startswith("PTG005: suppressed")]
+    assert notes == [
+        "PTG005: suppressed 1 constrained dependency mock candidate(s) with interaction or owner-outcome assertions (owner_exception_assertion=1)."
+    ]
 
 
 def test_deep_self_attribute_chain_stays_unresolved(tmp_path: Path) -> None:
