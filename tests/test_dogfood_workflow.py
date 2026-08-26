@@ -129,7 +129,10 @@ def test_summarize_records_counts_labels_and_categories() -> None:
 def test_load_records_skips_schema_documents() -> None:
     records = summary_module.load_records(ROOT / "examples" / "dogfood-reviews")
 
-    assert [record["review_id"] for record in records] == ["sample_001"]
+    assert [record["review_id"] for record in records] == [
+        "ptg005_distilled_controls_001",
+        "sample_001",
+    ]
 
 
 def test_sanitize_preserves_existing_command_shape() -> None:

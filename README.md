@@ -134,6 +134,7 @@ The repository ships executable Python/pytest regression fixtures under `cases/p
 - `issue_test_mismatch_001`
 - `mocked_core_path_001`
 - `legitimate_helper_mock_001`
+- `unconstrained_helper_mock_001`
 - `evidence_complete_001`
 
 Each fixture includes a small PR-like change, executable code, tests, change intent, and expected rule output. The expected output is used for regression testing of the tool itself; it is not presented as a public benchmark or a human-labeled comparison dataset.
@@ -184,6 +185,8 @@ PTG005 then applies three bounded layers:
 - direct changed-symbol mocks remain the highest-confidence warning;
 - explicitly imported external dependencies are treated as external-boundary candidates and suppressed from warnings;
 - changed tests that mock direct internal dependencies called on changed production lines are warned only when the mock is not constrained by an interaction assertion, owner return assertion, or owner exception assertion.
+
+PTG005 evidence is emitted as stable key/value context, including the relationship type, mock style, target, resolution result, review reason, changed owner symbol, changed call line, and candidate dependency targets where available. Suppressed constrained-helper and external-boundary candidates are summarized in notes rather than hidden silently.
 
 Unchanged call sites, untouched tests, deep instance-attribute chains, and other unresolved dynamic relationships remain conservative. A `PTG005` result is still a **candidate signal**; structural and test-semantics evidence does not prove that a mock is inappropriate.
 
@@ -246,7 +249,7 @@ It still does **not** include:
 - safe privileged execution of untrusted PR code;
 - GitHub API ingestion or a hosted service.
 
-The next milestone remains real-PR dogfooding: run the rules across varied repositories, record useful / false-positive / unclear signals, and turn recurring false-positive patterns into regression fixtures. PTG005 now combines symbol identity, bounded direct-dependency relationships, and constrained dependency-mock suppression; later work should focus on real-PR precision, related-test selection, and only then optional deeper semantic assistance where deterministic relationships remain ambiguous.
+The next milestone remains real-PR dogfooding: run the rules across varied repositories, record useful / false-positive / unclear signals, and turn recurring patterns into public-safe distilled controls rather than raw PR examples. PTG005 now combines symbol identity, bounded direct-dependency relationships, constrained dependency-mock suppression, and clearer relationship evidence; later work should focus on real-PR precision, related-test selection, and only then optional deeper semantic assistance where deterministic relationships remain ambiguous.
 
 ## License
 

@@ -32,6 +32,7 @@ The `claim.json` shape is retained from the original prototype because current r
 - `issue_test_mismatch_001`: exercises a test that covers a different behavior path.
 - `mocked_core_path_001`: exercises an explicit mock that replaces changed behavior.
 - `legitimate_helper_mock_001`: negative control for a dependency mock with an interaction-contract assertion.
+- `unconstrained_helper_mock_001`: positive control for a changed test that mocks an internal helper called from a changed owner line but only checks a weak owner result.
 - `evidence_complete_001`: positive control where the targeted behavior is directly asserted.
 
 ## Positive and Negative Controls
@@ -53,6 +54,29 @@ Examples worth adding include:
 - intentional test deletion vs. suspicious coverage reduction.
 
 These controls are more useful for product quality than a large synthetic leaderboard.
+
+## Dogfood-Derived Controls
+
+Real pull requests can motivate a fixture, but the committed fixture should be a
+distilled control rather than a raw or lightly renamed copy. Preserve only the
+rule-relevant shape:
+
+- which rule fired;
+- whether reviewer feedback was useful, false positive, unclear, or needed more context;
+- the coarse path/symbol/dependency kinds;
+- the relationship shape that the rule must preserve or suppress.
+
+Then rewrite the scenario with fictional module names, paths, symbols,
+dependencies, and tests. The public fixture should stand alone as a minimal
+rule-boundary example; the private PR remains only local validation evidence.
+
+For PTG005, `legitimate_helper_mock_001` and
+`unconstrained_helper_mock_001` are a paired control:
+
+```text
+constrained helper mock with owner behavior evidence -> suppress PTG005
+unconstrained helper mock with weak owner evidence -> emit PTG005
+```
 
 ## Updating Expected Findings
 

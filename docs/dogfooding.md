@@ -75,3 +75,14 @@ When the same sanitized category appears repeatedly as a `false_positive` or
 boundary. The fixture should use fictional code and stable names, and its
 expected output should define the intended behavior without copying details from
 the original PR.
+
+For rule PRs, the public artifact should be one of these forms:
+
+- a direct-check unit test that builds a tiny temporary Git repository;
+- an executable micro-PR fixture under `cases/python/`;
+- a sanitized aggregate/example record under `examples/dogfood-reviews/`;
+- documentation that explains the boundary without naming the original project.
+
+Do not commit a real external or private PR merely to justify a rule change. A
+distilled fixture is the normative artifact when it preserves the rule-relevant
+shape and removes project-specific details.

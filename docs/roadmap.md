@@ -12,6 +12,7 @@ Version `0.2.2` keeps the first public-ready shape from `0.1.0`, adds AST-scoped
 - obvious weak-assertion and test-weakening checks;
 - explicit Python mock-boundary candidates on changed symbols and unconstrained changed dependency mocks;
 - opt-in AST-scoped bounded targeted probes in an isolated Git worktree;
+- dogfood-derived sanitized review examples and public-safe distilled PTG005 controls;
 - text, JSON, and GitHub Actions output;
 - reusable root `action.yml` with advisory warnings/job summary;
 - executable Python/pytest regression fixtures;
@@ -84,6 +85,11 @@ needs more context
 ```
 
 Use recurring false-positive patterns to add regression fixtures and tighten rules before expanding the rule family.
+
+Real pull requests should inform this work without becoming public fixtures.
+The public repository should contain sanitized summaries and fictional distilled
+controls that preserve the rule shape, not raw diffs, paths, symbols, URLs, CI
+logs, or agent traces from private projects.
 
 Priority cases:
 
