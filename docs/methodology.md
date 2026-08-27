@@ -13,6 +13,7 @@ For a changed behavior, PR Test Guard may inspect:
 - changed production files and lines;
 - added, modified, removed, skipped, or weakened tests;
 - assertion shapes;
+- deterministic related-test candidates from imports, direct calls, test names, and mock targets;
 - changed-line coverage when available;
 - explicit mock or patch boundaries;
 - CI/test-run evidence;
@@ -53,6 +54,17 @@ A covered branch can still be backed by a weak assertion. A passing test can sti
 
 The current Python prototype extracts assertion structure and can flag obvious weak patterns. This is intentionally conservative. An assertion that looks weak syntactically can still be meaningful in a richer test context, so this class of signal should be advisory by default.
 
+### Related-test context
+
+The direct checker records candidate tests that have deterministic relationships
+to changed Python symbols. The current context layer recognizes exact import
+relationships, direct calls to changed symbols, supported mock targets, and test
+name tokens when another deterministic relationship already exists.
+
+This is context for review output, not a test-selection oracle. A related test
+candidate may still assert the wrong behavior, and no related candidate does not
+prove that coverage is missing.
+
 ### Mock-boundary evidence
 
 Mocks are neutral. The current structural detector raises a candidate when an explicit patch target overlaps changed code that appears central to the tested path, or when a changed test mocks an internal dependency called on a changed production line without a clear interaction or owner-outcome assertion.
@@ -78,7 +90,7 @@ The direct checker uses six stable rule ids for the current Python/pytest scope:
 - `PTG005` — a mock directly replaces a changed Python symbol, or a changed test mocks an unconstrained internal dependency called on a changed production line;
 - `PTG006` — bounded targeted probe survives the configured tests.
 
-Each result includes a rule id, advisory severity, file/line where available, a short message, and evidence text. The older fixture runner retains its research-prototype labels only so existing regression fixtures remain stable during the transition.
+Each result includes a rule id, advisory severity, file/line where available, a short message, and evidence text. The direct checker also emits related-test candidates as JSON context and a short text/GitHub summary. The older fixture runner retains its research-prototype labels only so existing regression fixtures remain stable during the transition.
 
 ## CLI and CI Boundary
 

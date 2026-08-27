@@ -36,11 +36,16 @@ The current Python/pytest path uses:
 - changed production and test files;
 - changed Python lines;
 - changed test assertions and skip/xfail markers;
+- deterministic related-test candidates from test imports, direct calls, test names, and mock targets;
 - tracked Python tests for symbol-resolved mock targets and bounded changed-call relationships;
 - optional `coverage.py` XML;
 - optional explicit test command for bounded targeted probes.
 
 Missing optional artifacts are reported as skipped checks, not silently converted into negative evidence.
+
+Related-test candidates are included to make output easier to inspect. They do
+not prove that a test validates the changed behavior, and they are not used as a
+merge-blocking policy.
 
 ## GitHub Action
 

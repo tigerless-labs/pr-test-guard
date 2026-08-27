@@ -26,6 +26,7 @@ def render_text(result: AnalysisResult) -> str:
         "─────────────",
         f"Base: {result.base}",
         f"Changed files: {len(result.files)} ({production} Python production, {tests} test)",
+        f"Related test candidates: {len(result.related_tests)}",
         "",
     ]
     if result.findings:
@@ -76,6 +77,7 @@ def github_summary(result: AnalysisResult) -> str:
         "## PR Test Guard",
         "",
         f"**{len(result.findings)} review signal(s)** found between `{result.base}` and `HEAD`.",
+        f"**{len(result.related_tests)} related test candidate(s)** identified from deterministic import/call/name context.",
         "",
     ]
     if result.findings:

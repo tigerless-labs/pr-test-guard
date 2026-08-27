@@ -109,6 +109,7 @@ It currently models evidence that can help answer:
 - **Was behavior changed without clear test evidence?**
 - **Are changed executable lines actually covered?**
 - **Do the relevant assertions constrain the behavior they appear to test?**
+- **Which tests have deterministic relationships to changed Python symbols?**
 - **Do tests exercise a different path than the change they are meant to support?**
 - **Do mocks or patches appear to replace the behavior under review?**
 - **Can a limited counterfactual change survive the attached tests?**
@@ -190,6 +191,8 @@ PTG005 evidence is emitted as stable key/value context, including the relationsh
 
 Unchanged call sites, untouched tests, deep instance-attribute chains, and other unresolved dynamic relationships remain conservative. A `PTG005` result is still a **candidate signal**; structural and test-semantics evidence does not prove that a mock is inappropriate.
 
+The direct checker also reports related-test candidates using deterministic import, direct-call, mock-target, and test-name context. This makes findings easier to inspect without claiming that a related test fully validates the changed behavior.
+
 The targeted probe generator is deliberately limited and AST-scoped. It covers a small set of status-code returns, boolean return flips, and comparison-boundary changes on lines added by the current PR while avoiding string/comment matches and unstable multi-line rewrites. A generated probe is not itself a finding: `PTG006` is emitted only when the configured tests pass at baseline and a supported probe survives an actual rerun in an isolated Git worktree.
 
 These deeper signals are part of the product's differentiation beyond patch coverage. Mock-boundary analysis stays static and advisory. Targeted probes are bounded, PR-scoped, and opt-in through `--deep` because they rerun repository tests. The goal is not a full mutation-testing campaign; it is a small number of review-focused probes against code changed by the current PR.
@@ -237,6 +240,7 @@ Version `0.2.2` supports direct Python/pytest PR analysis from the current Git r
 - uncovered changed Python lines when a coverage XML report is supplied;
 - obvious weak assertions added in changed tests;
 - suspicious test deletion, skip/xfail, or assertion removal;
+- deterministic related-test context for changed Python symbols;
 - lightweight symbol-resolved mock relationships around changed Python symbols and changed call sites, with constrained dependency mocks suppressed from PTG005 warnings;
 - optional bounded targeted probes that survive an explicit test command.
 

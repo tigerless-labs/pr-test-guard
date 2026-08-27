@@ -23,6 +23,8 @@ from .mock_analysis import (
     extract_mock_targets,
     match_mock_target,
 )
+from .mock_analysis.mocks import build_import_table, resolve_dotted_target
+from .mock_analysis.symbols import PythonSymbol
 from .probes import generate_probes
 
 
@@ -53,6 +55,7 @@ class AnalysisResult:
     findings: list[Finding]
     notes: list[str]
     probe_summary: dict[str, Any]
+    related_tests: list["RelatedTestCandidate"]
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -64,10 +67,31 @@ class AnalysisResult:
                 "test_files": sum(1 for item in self.files if is_test_path(item.path)),
                 "findings": len(self.findings),
                 "notes": len(self.notes),
+                "related_tests": len(self.related_tests),
             },
             "findings": [item.to_dict() for item in self.findings],
             "notes": self.notes,
             "probes": self.probe_summary,
+            "related_tests": [item.to_dict() for item in self.related_tests],
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class RelatedTestCandidate:
+    file: str
+    test_name: str
+    line: int
+    end_line: int
+    matched_symbols: tuple[str, ...]
+    reasons: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "file": self.file,
+            "test_name": self.test_name,
+            "line": self.line,
+            "matched_symbols": list(self.matched_symbols),
+            "reasons": list(self.reasons),
         }
 
 
@@ -218,7 +242,11 @@ def classify_assertion(node: ast.Assert) -> str:
     return type(test).__name__
 
 
-def weak_assertion_findings(repo_root: Path, files: list[FileDiff]) -> list[Finding]:
+def weak_assertion_findings(
+    repo_root: Path,
+    files: list[FileDiff],
+    related_tests: list[RelatedTestCandidate],
+) -> list[Finding]:
     findings: list[Finding] = []
     for diff in files:
         if not is_test_path(diff.path) or not diff.path.endswith(".py"):
@@ -241,6 +269,10 @@ def weak_assertion_findings(repo_root: Path, files: list[FileDiff]) -> list[Find
             if shape not in {"existence_or_none_check", "truthiness_check", "call_truthiness_check"}:
                 continue
             evidence = source_for_node(source, node)
+            related = related_tests_for_location(related_tests, file=diff.path, line=node.lineno)
+            if related:
+                related_symbols = sorted({symbol for item in related for symbol in item.matched_symbols})
+                evidence = f"{evidence}; related_symbol(s)={', '.join(related_symbols[:5])}"
             findings.append(
                 Finding(
                     rule_id="PTG003",
@@ -254,7 +286,7 @@ def weak_assertion_findings(repo_root: Path, files: list[FileDiff]) -> list[Find
     return findings
 
 
-def missing_test_change_findings(files: list[FileDiff]) -> list[Finding]:
+def missing_test_change_findings(files: list[FileDiff], related_tests: list[RelatedTestCandidate]) -> list[Finding]:
     production = [item for item in files if not is_test_path(item.path) and is_python_path(item.path)]
     test_changes = [item for item in files if is_test_path(item.path)]
     if not production or test_changes:
@@ -267,7 +299,7 @@ def missing_test_change_findings(files: list[FileDiff]) -> list[Finding]:
             file=first.path,
             line=first.added[0][0] if first.added else None,
             message="Production code changed, but this PR contains no test-file change. Existing tests may still cover it; review whether extra test evidence is needed.",
-            evidence=f"{len(production)} production file(s) changed; 0 test files changed",
+            evidence=f"{len(production)} production file(s) changed; 0 test files changed; {related_test_summary(related_tests)}",
         )
     ]
 
@@ -438,6 +470,135 @@ def tracked_python_files(repo_root: Path) -> list[str]:
 
 def tracked_test_files(repo_root: Path) -> list[str]:
     return [line for line in tracked_python_files(repo_root) if is_test_path(line)]
+
+
+def _symbol_tokens(symbol: PythonSymbol) -> set[str]:
+    text = f"{symbol.module} {symbol.qualname} {symbol.name}".replace(".", " ").replace("_", " ")
+    return {token for token in re.findall(r"[a-zA-Z0-9]+", text.lower()) if len(token) > 1}
+
+
+def _resolved_call_candidates(name: str, imports: dict[str, str]) -> set[str]:
+    resolved, _ = resolve_dotted_target(name, imports)
+    values = {name}
+    if resolved:
+        values.add(resolved)
+    return {item.strip(".") for item in values if item}
+
+
+def _import_reasons(imports: dict[str, str], symbol: PythonSymbol) -> set[str]:
+    reasons: set[str] = set()
+    for target in imports.values():
+        if target == symbol.canonical_name:
+            reasons.add("imports_changed_symbol")
+        elif target == symbol.module:
+            reasons.add("imports_changed_module")
+    return reasons
+
+
+def _call_reasons(test_node: ast.FunctionDef | ast.AsyncFunctionDef, imports: dict[str, str], symbol: PythonSymbol) -> set[str]:
+    reasons: set[str] = set()
+    for node in ast.walk(test_node):
+        if not isinstance(node, ast.Call):
+            continue
+        name = call_name(node)
+        if not name:
+            continue
+        if symbol.canonical_name in _resolved_call_candidates(name, imports):
+            reasons.add("direct_call_changed_symbol")
+    return reasons
+
+
+def _mock_reasons(
+    mock_targets: list[Any],
+    test_node: ast.FunctionDef | ast.AsyncFunctionDef,
+    symbol: PythonSymbol,
+) -> set[str]:
+    reasons: set[str] = set()
+    start = int(getattr(test_node, "lineno", 0))
+    end = int(getattr(test_node, "end_lineno", start))
+    for target in mock_targets:
+        if not (start <= target.line <= end):
+            continue
+        if any(match.symbol.canonical_name == symbol.canonical_name for match in match_mock_target(target, [symbol])):
+            reasons.add("mocks_changed_symbol")
+    return reasons
+
+
+def collect_related_tests(
+    repo_root: Path,
+    changed: dict[str, list[dict[str, Any]]],
+    *,
+    test_files: list[str] | None = None,
+) -> list[RelatedTestCandidate]:
+    symbols = collect_changed_symbols(repo_root, changed)
+    if not symbols:
+        return []
+
+    candidates: list[RelatedTestCandidate] = []
+    paths = test_files if test_files is not None else tracked_test_files(repo_root)
+    for rel_path in paths:
+        path = repo_root / rel_path
+        if not path.is_file() or path.suffix != ".py":
+            continue
+        try:
+            source = path.read_text(encoding="utf-8")
+            tree = ast.parse(source)
+        except (OSError, SyntaxError, UnicodeDecodeError):
+            continue
+
+        imports = build_import_table(tree, rel_path)
+        mock_targets = extract_mock_targets(source, tree, rel_path)
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not node.name.startswith("test_"):
+                continue
+            matched_symbols: set[str] = set()
+            reasons: set[str] = set()
+            name_tokens = set(re.findall(r"[a-zA-Z0-9]+", node.name.lower()))
+            for symbol in symbols:
+                symbol_reasons = set()
+                symbol_reasons.update(_import_reasons(imports, symbol))
+                symbol_reasons.update(_call_reasons(node, imports, symbol))
+                symbol_reasons.update(_mock_reasons(mock_targets, node, symbol))
+                if symbol_reasons:
+                    matched_symbols.add(symbol.canonical_name)
+                    reasons.update(symbol_reasons)
+                    if name_tokens & _symbol_tokens(symbol):
+                        reasons.add("test_name_token")
+            if matched_symbols:
+                line = int(getattr(node, "lineno", 0))
+                candidates.append(
+                    RelatedTestCandidate(
+                        file=rel_path,
+                        test_name=node.name,
+                        line=line,
+                        end_line=int(getattr(node, "end_lineno", line)),
+                        matched_symbols=tuple(sorted(matched_symbols)),
+                        reasons=tuple(sorted(reasons)),
+                    )
+                )
+
+    return sorted(candidates, key=lambda item: (item.file, item.line, item.test_name))
+
+
+def related_test_summary(related_tests: list[RelatedTestCandidate]) -> str:
+    if not related_tests:
+        return "related_test_candidates=0"
+    symbols = sorted({symbol for item in related_tests for symbol in item.matched_symbols})
+    reasons = sorted({reason for item in related_tests for reason in item.reasons})
+    return (
+        f"related_test_candidates={len(related_tests)}; "
+        f"related_symbol(s)={', '.join(symbols[:5])}; "
+        f"reason(s)={', '.join(reasons)}"
+    )
+
+
+def related_tests_for_location(
+    related_tests: list[RelatedTestCandidate],
+    *,
+    file: str,
+    line: int,
+) -> list[RelatedTestCandidate]:
+    return [item for item in related_tests if item.file == file and item.line <= line <= item.end_line]
 
 
 def mock_relation_evidence(
@@ -632,6 +793,7 @@ def targeted_probe_findings(
     test_command: str | None,
     max_probes: int,
     notes: list[str],
+    related_tests: list[RelatedTestCandidate],
 ) -> tuple[list[Finding], dict[str, Any]]:
     empty_summary = {"enabled": deep, "generated": 0, "applied": 0, "survived": 0, "baseline_passed": None}
     if not deep:
@@ -690,7 +852,8 @@ def targeted_probe_findings(
                                 f"probe_id={probe.get('id', 'unknown')}; "
                                 f"kind={probe.get('kind', 'unknown')}; "
                                 f"mutation={probe['original'].strip()} -> {probe['replacement'].strip()}; "
-                                f"rationale={probe['rationale']}"
+                                f"rationale={probe['rationale']}; "
+                                f"{related_test_summary(related_tests)}"
                             ),
                         )
                     )
@@ -728,11 +891,14 @@ def analyze_repository(
     files = parse_diff(repo_root, base)
     changed = changed_code_lines(files)
     notes: list[str] = []
+    related_tests = collect_related_tests(repo_root, changed)
+    if changed:
+        notes.append(f"Related test context: {related_test_summary(related_tests)}.")
 
     findings: list[Finding] = []
-    findings.extend(missing_test_change_findings(files))
+    findings.extend(missing_test_change_findings(files, related_tests))
     findings.extend(uncovered_line_findings(repo_root, changed, coverage_path, notes))
-    findings.extend(weak_assertion_findings(repo_root, files))
+    findings.extend(weak_assertion_findings(repo_root, files, related_tests))
     findings.extend(test_weakening_findings(repo_root, files))
     findings.extend(mock_boundary_findings(repo_root, changed, files, notes))
     probe_findings, probe_summary = targeted_probe_findings(
@@ -742,6 +908,7 @@ def analyze_repository(
         test_command=test_command,
         max_probes=max_probes,
         notes=notes,
+        related_tests=related_tests,
     )
     findings.extend(probe_findings)
 
@@ -758,6 +925,7 @@ def analyze_repository(
         findings=dedupe_findings(findings),
         notes=notes,
         probe_summary=probe_summary,
+        related_tests=related_tests,
     )
 
 

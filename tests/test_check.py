@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from pr_test_guard.check import analyze_repository
+from pr_test_guard.reporters import render_json, render_text
 
 
 def run(*args: str, cwd: Path) -> None:
@@ -45,6 +46,51 @@ def test_missing_test_change_is_advisory_signal(tmp_path: Path) -> None:
 
     result = analyze_repository(repo, base="HEAD~1")
     assert "PTG001" in rule_ids(result)
+    finding = next(item for item in result.findings if item.rule_id == "PTG001")
+    assert "related_test_candidates=1" in (finding.evidence or "")
+    assert result.related_tests[0].matched_symbols == ("app.value",)
+    assert set(result.related_tests[0].reasons) == {
+        "direct_call_changed_symbol",
+        "imports_changed_symbol",
+        "test_name_token",
+    }
+    assert "Related test candidates: 1" in render_text(result)
+    assert '"related_tests"' in render_json(result)
+
+
+def test_related_context_tracks_module_import_without_direct_call(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "service.py", "def charge(amount):\n    return amount > 0\n")
+    write(repo / "tests/test_service.py", "import service\n\n\ndef test_service_imports():\n    assert service is not None\n")
+    commit_all(repo, "base")
+
+    write(repo / "service.py", "def charge(amount):\n    return amount >= 0\n")
+    commit_all(repo, "change production only")
+
+    result = analyze_repository(repo, base="HEAD~1")
+
+    assert len(result.related_tests) == 1
+    related = result.related_tests[0]
+    assert related.test_name == "test_service_imports"
+    assert related.matched_symbols == ("service.charge",)
+    assert related.reasons == ("imports_changed_module", "test_name_token")
+
+
+def test_related_context_ignores_same_token_from_different_module(tmp_path: Path) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "payment.py", "def charge(amount):\n    return amount > 0\n")
+    write(repo / "email.py", "def charge(message):\n    return True\n")
+    write(repo / "tests/test_email.py", "from email import charge\n\n\ndef test_charge():\n    assert charge('hello') is True\n")
+    commit_all(repo, "base")
+
+    write(repo / "payment.py", "def charge(amount):\n    return amount >= 0\n")
+    commit_all(repo, "change payment")
+
+    result = analyze_repository(repo, base="HEAD~1")
+
+    assert result.related_tests == []
+    finding = next(item for item in result.findings if item.rule_id == "PTG001")
+    assert "related_test_candidates=0" in (finding.evidence or "")
 
 
 def test_weak_assertion_and_mock_boundary_are_detected(tmp_path: Path) -> None:
@@ -68,6 +114,8 @@ def test_weak_assertion_and_mock_boundary_are_detected(tmp_path: Path) -> None:
     ids = rule_ids(result)
     assert "PTG003" in ids
     assert "PTG005" in ids
+    weak = next(item for item in result.findings if item.rule_id == "PTG003")
+    assert "related_symbol(s)=payment.charge" in (weak.evidence or "")
 
 
 def test_test_skip_is_detected(tmp_path: Path) -> None:
@@ -136,6 +184,7 @@ def test_targeted_probe_survivor_runs_in_isolated_worktree(tmp_path: Path) -> No
     assert "probe_id=P1" in evidence
     assert "kind=return_status_code" in evidence
     assert "mutation=return 400 -> return 200" in evidence
+    assert "related_test_candidates=1" in evidence
     assert run_worktree_list(repo) == 1
 
 
