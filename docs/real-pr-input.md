@@ -56,7 +56,7 @@ The root `action.yml` wraps the same CLI/core. A consumer repository checks out 
   with:
     fetch-depth: 0
 
-- uses: tigerless-labs/pr-test-guard@v0.2.2
+- uses: tigerless-labs/pr-test-guard@v0.2.3
   with:
     base: origin/${{ github.base_ref }}
 ```
