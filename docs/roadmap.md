@@ -10,6 +10,7 @@ Version `0.2.2` keeps the first public-ready shape from `0.1.0`, adds AST-scoped
 - `pr-test-guard check --base <base-ref>` for repository-native PR analysis;
 - optional `coverage.py` XML input for changed-line coverage signals;
 - obvious weak-assertion and test-weakening checks;
+- deterministic related-test context for changed Python symbols;
 - explicit Python mock-boundary candidates on changed symbols and unconstrained changed dependency mocks;
 - opt-in AST-scoped bounded targeted probes in an isolated Git worktree;
 - dogfood-derived sanitized review examples and public-safe distilled PTG005 controls;
@@ -50,6 +51,18 @@ The PTG005 precision work remains deterministic and offline, with three bounded 
 - keep weak existence assertions, unconstrained mock return values, and ambiguous owner behavior in the warning path.
 
 This layer improves **structural and test-semantics precision**, not business-intent understanding. It still does not decide whether a mock is appropriate, build a repository-wide call graph, or infer dynamic Python types. PTG005 remains advisory. Real-PR dogfooding should measure whether the relationship layer removes low-value warnings while retaining direct changed-symbol and unconstrained changed-internal-dependency cases.
+
+## Current Main: Related Test Context
+
+The direct checker records candidate tests tied to changed symbols through exact
+imports, direct calls, supported mock targets, and test-name tokens when another
+deterministic relationship already exists. This gives findings and summaries a
+small amount of surrounding test context without claiming that the candidate
+test is sufficient.
+
+The context is intentionally conservative: same-name symbols from different
+modules stay unrelated, dynamic calls are not guessed, and business-intent
+mapping remains out of scope for the default path.
 
 ## Product Principles
 
