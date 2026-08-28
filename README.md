@@ -8,7 +8,7 @@
 
 PR Test Guard helps reviewers spot PRs that look tested but still carry obvious test-quality risks: missing test changes, uncovered changed code, weak assertions, mismatched tests, or mocks that may replace the behavior under review.
 
-The project is CLI-first and designed to fit naturally into CI. Its default behavior is advisory: surface actionable signals for reviewers, and let each repository decide which rules, if any, should become merge-blocking policy. Version `0.2.3` adds deterministic related-test context and clearer PTG005/PTG006 evidence on top of the direct real-PR analyzer, reusable GitHub Action, PTG005 false-positive reduction, and AST-scoped targeted probes.
+The project is CLI-first and designed to fit naturally into CI. Its default behavior is advisory: surface actionable signals for reviewers, and let each repository decide which rules, if any, should become merge-blocking policy. Current main adds configurable rule policy and richer GitHub output on top of the `0.2.3` related-test context release.
 
 | | |
 | --- | --- |
@@ -52,6 +52,29 @@ pr-test-guard check \
 
 Findings are advisory and a successful analysis exits `0` even when warnings are found. Operational errors such as an invalid base ref or malformed coverage file exit non-zero.
 
+To tune adoption in a repository, add `.pr-test-guard.yml`:
+
+```yaml
+rules:
+  PTG001: warn
+  PTG003: warn
+  PTG005: warn
+  PTG006: error
+
+policy:
+  fail_on: []
+
+paths:
+  ignore:
+    - "docs/**"
+    - "scripts/generated/**"
+
+related_tests:
+  max_candidates: 5
+```
+
+Rule actions are `off`, `warn`, or `error`. `off` suppresses matching findings, `warn` keeps the default advisory behavior, and `error` makes `pr-test-guard check` exit `1` when that rule triggers. `policy.fail_on` accepts rule ids that should be treated as error-level without repeating them under `rules`.
+
 To run the same analyzer automatically on pull requests, add a workflow such as:
 
 ```yaml
@@ -74,6 +97,7 @@ jobs:
       - uses: tigerless-labs/pr-test-guard@v0.2.3
         with:
           base: origin/${{ github.base_ref }}
+          config: .pr-test-guard.yml
 ```
 
 Coverage and deep probes are opt-in Action inputs. Deep mode assumes the workflow has already installed the target repository's own test dependencies and that the configured test command passes before PR Test Guard runs:
@@ -86,6 +110,7 @@ Coverage and deep probes are opt-in Action inputs. Deep mode assumes the workflo
           deep: "true"
           test-command: pytest -q
           max-probes: "3"
+          fail-on: PTG006
 ```
 
 The existing regression-fixture commands remain available for development of PR Test Guard itself. Install the development extras first:
@@ -175,7 +200,7 @@ current Git repository + base ref + optional coverage/test command
 
 The older normalized bundle under `examples/real-pr-bundles/` remains as a development fixture and compatibility prototype for richer CI artifacts. It can include PR metadata, a diff, CI/test results, coverage, and optional change-intent context, but it is not required by the direct checker. See [Real PR Input](docs/real-pr-input.md).
 
-The reusable `action.yml` calls the same CLI/core. There is no separate hosted analysis service and no API key is required for the default path.
+The reusable `action.yml` calls the same CLI/core. There is no separate hosted analysis service and no API key is required for the default path. GitHub output is grouped by rule, includes related-test candidates up to the configured limit, and emits error annotations for rules configured as error-level policy.
 
 ## Mock and Probe Boundaries
 
@@ -234,7 +259,7 @@ Patch-coverage tools answer whether changed lines were executed. PR Test Guard k
 
 ## Current Scope
 
-Version `0.2.3` supports direct Python/pytest PR analysis from the current Git repository and a reusable advisory GitHub Action. The direct checker currently surfaces:
+Current main supports direct Python/pytest PR analysis from the current Git repository and a reusable advisory GitHub Action. The direct checker currently surfaces:
 
 - production-code changes with no test-file change;
 - uncovered changed Python lines when a coverage XML report is supplied;
@@ -243,10 +268,10 @@ Version `0.2.3` supports direct Python/pytest PR analysis from the current Git r
 - deterministic related-test context for changed Python symbols;
 - lightweight symbol-resolved mock relationships around changed Python symbols and changed call sites, with constrained dependency mocks suppressed from PTG005 warnings;
 - optional bounded targeted probes that survive an explicit test command.
+- configurable rule policy through `.pr-test-guard.yml`, `--config`, `--no-config`, and `--fail-on`.
 
 It still does **not** include:
 
-- configurable merge-blocking enforcement;
 - per-test coverage mapping;
 - broad business-intent assertion or mock classification;
 - automatic discovery of every repository's test command;

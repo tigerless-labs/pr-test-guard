@@ -11,6 +11,14 @@ inputs:
     description: Optional path to a coverage.py XML report.
     required: false
     default: ""
+  config:
+    description: Optional path to a PR Test Guard config file.
+    required: false
+    default: ""
+  fail-on:
+    description: Comma-separated rule ids that should fail the Action when triggered.
+    required: false
+    default: ""
   deep:
     description: Enable bounded targeted probes. Requires test-command.
     required: false
@@ -69,6 +77,8 @@ runs:
       shell: bash
       env:
         INPUT_COVERAGE: ${{ inputs.coverage }}
+        INPUT_CONFIG: ${{ inputs.config }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
         INPUT_DEEP: ${{ inputs.deep }}
         INPUT_TEST_COMMAND: ${{ inputs.test-command }}
         INPUT_MAX_PROBES: ${{ inputs.max-probes }}
@@ -79,6 +89,14 @@ runs:
 
         if [[ -n "$INPUT_COVERAGE" ]]; then
           args+=(--coverage "$INPUT_COVERAGE")
+        fi
+
+        if [[ -n "$INPUT_CONFIG" ]]; then
+          args+=(--config "$INPUT_CONFIG")
+        fi
+
+        if [[ -n "$INPUT_FAIL_ON" ]]; then
+          args+=(--fail-on "$INPUT_FAIL_ON")
         fi
 
         if [[ "$INPUT_DEEP" == "true" ]]; then
