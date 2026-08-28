@@ -28,6 +28,41 @@ pr-test-guard check \
 
 The default path does not require a PR body, issue text, LLM output, or a custom JSON bundle.
 
+## Configuration
+
+`pr-test-guard check` automatically reads the first config file found at the repository root:
+
+```text
+.pr-test-guard.yml
+.pr-test-guard.yaml
+.pr-test-guard.json
+.pr-test-guard.toml
+```
+
+A minimal YAML config can tune rollout without changing rule detection:
+
+```yaml
+rules:
+  PTG001: warn
+  PTG003: off
+  PTG005: warn
+  PTG006: error
+
+policy:
+  fail_on: [PTG006]
+
+paths:
+  ignore:
+    - "docs/**"
+
+related_tests:
+  max_candidates: 5
+```
+
+Use `--config path/to/config.yml` to pass an explicit file, `--no-config` to run with the default advisory policy, and `--fail-on PTG006,PTG005` for a one-off CI override.
+
+Configuration is applied after detection. It controls which findings are shown and whether the command exits `1`; it does not make heuristic rules more certain.
+
 ## What the Direct Checker Reads
 
 The current Python/pytest path uses:
@@ -40,6 +75,7 @@ The current Python/pytest path uses:
 - tracked Python tests for symbol-resolved mock targets and bounded changed-call relationships;
 - optional `coverage.py` XML;
 - optional explicit test command for bounded targeted probes.
+- optional `.pr-test-guard.*` policy configuration.
 
 Missing optional artifacts are reported as skipped checks, not silently converted into negative evidence.
 
@@ -62,6 +98,26 @@ The root `action.yml` wraps the same CLI/core. A consumer repository checks out 
 ```
 
 The Action emits GitHub warning annotations and appends a job summary. Findings are advisory by default and do not make the Action fail.
+
+To use repository policy:
+
+```yaml
+- uses: tigerless-labs/pr-test-guard@v0.2.3
+  with:
+    base: origin/${{ github.base_ref }}
+    config: .pr-test-guard.yml
+```
+
+To enforce a high-confidence rule without a config file:
+
+```yaml
+- uses: tigerless-labs/pr-test-guard@v0.2.3
+  with:
+    base: origin/${{ github.base_ref }}
+    fail-on: PTG006
+```
+
+Rules configured as `error` emit GitHub error annotations and make the Action fail after the summary is written. Warning rules remain advisory.
 
 ## Deep Probe Boundary
 
@@ -91,6 +147,6 @@ This bundle is no longer required for normal real-PR use.
 
 ## Security Boundary
 
-The static/default checker only reads repository content and Git history. Coverage is consumed only when explicitly supplied.
+The static/default checker only reads repository content, Git history, and an optional repository-local config file. Coverage is consumed only when explicitly supplied.
 
 Deep probes execute a test command chosen by the repository/user. In GitHub Actions, that execution therefore follows the trust boundary of the workflow that opted into it. PR Test Guard does not request repository write permission or secrets for its default advisory path.

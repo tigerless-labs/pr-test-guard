@@ -31,6 +31,8 @@ Rules should prefer signals that are:
 4. **Cheap enough for CI** — lightweight checks should not require an expensive benchmark or hosted service.
 5. **Advisory when uncertain** — heuristics should surface risk without pretending to know the final merge decision.
 
+Detection and policy are separate. The checker identifies review signals; repository configuration decides whether a selected rule is hidden, advisory, or error-level for CI.
+
 ## Evidence Layers
 
 ### Test-diff evidence
@@ -90,7 +92,7 @@ The direct checker uses six stable rule ids for the current Python/pytest scope:
 - `PTG005` — a mock directly replaces a changed Python symbol, or a changed test mocks an unconstrained internal dependency called on a changed production line;
 - `PTG006` — bounded targeted probe survives the configured tests.
 
-Each result includes a rule id, advisory severity, file/line where available, a short message, and evidence text. The direct checker also emits related-test candidates as JSON context and a short text/GitHub summary. The older fixture runner retains its research-prototype labels only so existing regression fixtures remain stable during the transition.
+Each result includes a rule id, severity, file/line where available, a short message, and evidence text. Severity defaults to `warning`; `.pr-test-guard.yml` or `--fail-on` can promote selected rules to `error` or suppress them with `off`. The direct checker also emits related-test candidates as JSON context and a short text/GitHub summary. The older fixture runner retains its research-prototype labels only so existing regression fixtures remain stable during the transition.
 
 ## CLI and CI Boundary
 
@@ -104,10 +106,10 @@ PR Test Guard core
     -> GitHub Action wrapper
 ```
 
-CI integration should be advisory by default. Repositories may later opt into stricter enforcement for specific high-confidence rules or project-defined thresholds.
+CI integration should be advisory by default. Repositories can opt into stricter enforcement for selected rules with configuration while keeping heuristic detection inspectable and reversible.
 
 ## Current Limits
 
-Version `0.2.3` provides a repository-native `check` command, a reusable GitHub Action, deterministic related-test context, AST-scoped targeted probes, and PTG005 constrained dependency-mock suppression for the current Python/pytest scope. The checker is intentionally conservative: it does not infer full PR correctness, automatically discover every project's test command, or treat heuristic signals as merge-blocking failures.
+Current main provides a repository-native `check` command, a reusable GitHub Action, configurable rule policy, deterministic related-test context, AST-scoped targeted probes, and PTG005 constrained dependency-mock suppression for the current Python/pytest scope. The checker is intentionally conservative: it does not infer full PR correctness, automatically discover every project's test command, or treat heuristic signals as merge-blocking failures unless the repository explicitly configures that policy.
 
 The immediate engineering goal is real-PR dogfooding and false-positive reduction. Controlled fixtures remain regression tests for the tool rather than a public benchmark.

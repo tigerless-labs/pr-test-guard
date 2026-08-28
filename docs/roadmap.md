@@ -2,9 +2,9 @@
 
 PR Test Guard is a lightweight PR test-quality tool: run fast checks on a pull-request diff, explain what triggered, and fit naturally into local CLI and CI workflows.
 
-Version `0.2.3` keeps the first public-ready shape from `0.1.0`, adds deterministic related-test context, improves PTG005/PTG006 evidence, adds AST-scoped targeted probe generation for the optional deep path, reduces PTG005 false positives for constrained dependency mocks, and fixes PTG006 rerun correctness around stale Python bytecode.
+Current main keeps the first public-ready shape from `0.1.0`, adds deterministic related-test context, configurable rule policy, richer GitHub output, improves PTG005/PTG006 evidence, adds AST-scoped targeted probe generation for the optional deep path, reduces PTG005 false positives for constrained dependency mocks, and fixes PTG006 rerun correctness around stale Python bytecode.
 
-## What Exists in 0.2.3
+## What Exists on Main
 
 - `pr-test-guard` / `python -m pr_test_guard` entrypoints;
 - `pr-test-guard check --base <base-ref>` for repository-native PR analysis;
@@ -15,6 +15,7 @@ Version `0.2.3` keeps the first public-ready shape from `0.1.0`, adds determinis
 - opt-in AST-scoped bounded targeted probes in an isolated Git worktree;
 - dogfood-derived sanitized review examples and public-safe distilled PTG005 controls;
 - text, JSON, and GitHub Actions output;
+- `.pr-test-guard.*` configuration for rule `off` / `warn` / `error`, ignored paths, related-test display limits, and one-off `--fail-on` CI policy;
 - reusable root `action.yml` with advisory warnings/job summary;
 - executable Python/pytest regression fixtures;
 - normalized real-PR bundle compatibility for development artifacts.
@@ -80,7 +81,7 @@ Patch coverage remains useful, but PR Test Guard should also surface signals tha
 
 ### Advisory by default
 
-Heuristic signals default to warnings. Repositories can choose later which high-confidence policies deserve to block merges.
+Heuristic signals default to warnings. Repositories can choose which high-confidence policies deserve to block merges.
 
 ### CLI core, integrations on top
 
@@ -113,17 +114,27 @@ Priority cases:
 - test deletion/skip changes with explicit intent;
 - changed code with good coverage but a surviving targeted probe.
 
-## Next: Output and Policy Controls
+## Current Main: Output and Policy Controls
+
+The CLI now separates detection from policy. Default runs remain advisory, while
+repositories can configure selected rules as `off`, `warn`, or `error`.
+Configured error rules exit `1` and emit GitHub error annotations after the
+summary is written.
+
+GitHub summaries group findings by rule, include evidence in tables, and show a
+bounded list of related-test candidates. This makes early adoption practical
+without claiming that every heuristic warning should block merges.
+
+Keep policy separate from detection: the checker identifies signals; the repository decides what blocks a merge.
+
+## Next: Adoption Controls
 
 After dogfooding stabilizes the signals, consider:
 
-- configurable rule enable/disable settings;
-- optional fail-on selected rules or severity;
-- richer GitHub annotations;
 - JSON artifact upload examples;
-- repository path/test mapping configuration.
-
-Keep policy separate from detection: the checker identifies signals; the repository decides what blocks a merge.
+- repository path/test mapping configuration beyond ignored finding paths;
+- per-rule thresholds for high-volume findings;
+- richer GitHub annotations with stable grouping keys.
 
 ## Later: Broader Coverage and Language Support
 

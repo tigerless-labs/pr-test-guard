@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 
 from .check import CheckError, analyze_repository, default_base
+from .config import GuardConfig, config_from_overrides, load_config
+from .policy import apply_config, exit_code_for
 from .reporters import emit_github, render_json, render_text
 from .version import __version__
 
@@ -59,6 +61,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--coverage",
         default=None,
         help="optional coverage.py XML report used for changed-line coverage checks",
+    )
+    check.add_argument(
+        "--config",
+        default=None,
+        help="optional path to .pr-test-guard.yml, .json, or .toml config",
+    )
+    check.add_argument(
+        "--no-config",
+        action="store_true",
+        help="disable automatic .pr-test-guard.* config discovery",
+    )
+    check.add_argument(
+        "--fail-on",
+        default=None,
+        help="comma-separated rule ids that should fail the command when triggered",
     )
     check.add_argument(
         "--deep",
@@ -136,6 +153,10 @@ def build_parser() -> argparse.ArgumentParser:
 def run_check(parsed: argparse.Namespace) -> int:
     base = parsed.base or default_base()
     try:
+        if parsed.no_config and parsed.config:
+            raise CheckError("--config and --no-config cannot be used together")
+        config = GuardConfig() if parsed.no_config else load_config(Path.cwd(), explicit_path=parsed.config)
+        config = config_from_overrides(config, fail_on=parsed.fail_on)
         result = analyze_repository(
             Path.cwd(),
             base=base,
@@ -144,6 +165,7 @@ def run_check(parsed: argparse.Namespace) -> int:
             test_command=parsed.test_command,
             max_probes=parsed.max_probes,
         )
+        result = apply_config(result, config)
     except CheckError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -155,8 +177,7 @@ def run_check(parsed: argparse.Namespace) -> int:
     else:
         sys.stdout.write(render_text(result))
 
-    # Findings are advisory by default. A successful analysis exits 0 even when warnings exist.
-    return 0
+    return exit_code_for(result)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -56,6 +56,7 @@ class AnalysisResult:
     notes: list[str]
     probe_summary: dict[str, Any]
     related_tests: list["RelatedTestCandidate"]
+    policy: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -73,6 +74,7 @@ class AnalysisResult:
             "notes": self.notes,
             "probes": self.probe_summary,
             "related_tests": [item.to_dict() for item in self.related_tests],
+            "policy": self.policy,
         }
 
 

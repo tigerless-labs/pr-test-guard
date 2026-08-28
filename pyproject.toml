@@ -12,7 +12,9 @@ license = { file = "LICENSE" }
 authors = [
   { name = "Tigerless Labs" }
 ]
-dependencies = []
+dependencies = [
+  "PyYAML>=6.0"
+]
 
 [project.optional-dependencies]
 dev = [
