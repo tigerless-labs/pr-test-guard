@@ -99,6 +99,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="text",
         help="output format (default: text)",
     )
+    check.add_argument(
+        "--json-output",
+        default=None,
+        help="optional path to also write the full JSON analysis result",
+    )
 
     validate_cases = subcommands.add_parser(
         "validate-cases",
@@ -166,6 +171,8 @@ def run_check(parsed: argparse.Namespace) -> int:
             max_probes=parsed.max_probes,
         )
         result = apply_config(result, config)
+        if parsed.json_output:
+            write_json_output(Path(parsed.json_output), render_json(result))
     except CheckError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -178,6 +185,15 @@ def run_check(parsed: argparse.Namespace) -> int:
         sys.stdout.write(render_text(result))
 
     return exit_code_for(result)
+
+
+def write_json_output(path: Path, content: str) -> None:
+    try:
+        if path.parent != Path("."):
+            path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    except OSError as exc:
+        raise CheckError(f"unable to write JSON output {path}: {exc}") from exc
 
 
 def main(argv: list[str] | None = None) -> int:

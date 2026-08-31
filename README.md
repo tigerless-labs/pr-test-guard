@@ -40,6 +40,16 @@ If the project already produces a `coverage.py` XML report, add it as another si
 pr-test-guard check --base origin/main --coverage coverage.xml
 ```
 
+To keep a structured report for CI artifacts or later analysis, write JSON in
+addition to the selected human-facing output:
+
+```bash
+pr-test-guard check \
+  --base origin/main \
+  --format text \
+  --json-output pr-test-guard-report.json
+```
+
 For the optional deeper check, explicitly provide the project's test command. PR Test Guard creates an isolated Git worktree, runs the unmodified tests once, then applies at most a few bounded probes to changed Python lines:
 
 ```bash
@@ -111,6 +121,17 @@ Coverage and deep probes are opt-in Action inputs. Deep mode assumes the workflo
           test-command: pytest -q
           max-probes: "3"
           fail-on: PTG006
+```
+
+Current main can also write and optionally upload a structured JSON report:
+
+```yaml
+      - uses: tigerless-labs/pr-test-guard@main
+        with:
+          base: origin/${{ github.base_ref }}
+          json-output: pr-test-guard-report.json
+          upload-artifact: "true"
+          artifact-name: pr-test-guard-report
 ```
 
 The existing regression-fixture commands remain available for development of PR Test Guard itself. Install the development extras first:
@@ -196,11 +217,12 @@ current Git repository + base ref + optional coverage/test command
   -> pr-test-guard check
   -> PR-scoped rule signals
   -> text / JSON / GitHub Actions output
+  -> optional JSON report artifact
 ```
 
 The older normalized bundle under `examples/real-pr-bundles/` remains as a development fixture and compatibility prototype for richer CI artifacts. It can include PR metadata, a diff, CI/test results, coverage, and optional change-intent context, but it is not required by the direct checker. See [Real PR Input](docs/real-pr-input.md).
 
-The reusable `action.yml` calls the same CLI/core. There is no separate hosted analysis service and no API key is required for the default path. GitHub output is grouped by rule, includes related-test candidates up to the configured limit, and emits error annotations for rules configured as error-level policy.
+The reusable `action.yml` calls the same CLI/core. There is no separate hosted analysis service and no API key is required for the default path. GitHub output is grouped by rule, includes related-test candidates up to the configured limit, emits error annotations for rules configured as error-level policy, and can retain the full JSON report as a workflow artifact.
 
 ## Mock and Probe Boundaries
 
@@ -269,6 +291,7 @@ Version `0.2.4` supports direct Python/pytest PR analysis from the current Git r
 - lightweight symbol-resolved mock relationships around changed Python symbols and changed call sites, with constrained dependency mocks suppressed from PTG005 warnings;
 - optional bounded targeted probes that survive an explicit test command.
 - configurable rule policy through `.pr-test-guard.yml`, `--config`, `--no-config`, and `--fail-on`.
+- optional JSON report output through `--json-output` and GitHub artifact upload on current main.
 
 It still does **not** include:
 
