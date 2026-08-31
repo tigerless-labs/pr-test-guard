@@ -26,6 +26,16 @@ pr-test-guard check \
   --max-probes 3
 ```
 
+`--json-output` writes the complete structured result in addition to the selected
+stdout format. Parent directories are created automatically:
+
+```bash
+pr-test-guard check \
+  --base origin/main \
+  --format github \
+  --json-output artifacts/pr-test-guard-report.json
+```
+
 The default path does not require a PR body, issue text, LLM output, or a custom JSON bundle.
 
 ## Configuration
@@ -76,6 +86,7 @@ The current Python/pytest path uses:
 - optional `coverage.py` XML;
 - optional explicit test command for bounded targeted probes.
 - optional `.pr-test-guard.*` policy configuration.
+- optional JSON report output path for CI artifacts or follow-up analysis.
 
 Missing optional artifacts are reported as skipped checks, not silently converted into negative evidence.
 
@@ -119,6 +130,20 @@ To enforce a high-confidence rule without a config file:
 
 Rules configured as `error` emit GitHub error annotations and make the Action fail after the summary is written. Warning rules remain advisory.
 
+Current main also supports JSON report artifacts:
+
+```yaml
+- uses: tigerless-labs/pr-test-guard@main
+  with:
+    base: origin/${{ github.base_ref }}
+    json-output: pr-test-guard-report.json
+    upload-artifact: "true"
+    artifact-name: pr-test-guard-report
+```
+
+The Action records the checker exit code, writes the JSON report, uploads it when
+requested, and only then fails the job for configured error-level findings.
+
 ## Deep Probe Boundary
 
 `--deep` is opt-in because it executes the repository's configured test command. PR Test Guard first creates an isolated Git worktree at `HEAD`, verifies that the unmodified test command passes, and only then applies a bounded number of supported probes.
@@ -147,6 +172,6 @@ This bundle is no longer required for normal real-PR use.
 
 ## Security Boundary
 
-The static/default checker only reads repository content, Git history, and an optional repository-local config file. Coverage is consumed only when explicitly supplied.
+The static/default checker only reads repository content, Git history, and an optional repository-local config file. Coverage is consumed only when explicitly supplied. JSON report output writes only the analysis result that the CLI can already print.
 
 Deep probes execute a test command chosen by the repository/user. In GitHub Actions, that execution therefore follows the trust boundary of the workflow that opted into it. PR Test Guard does not request repository write permission or secrets for its default advisory path.

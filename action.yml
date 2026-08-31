@@ -19,6 +19,18 @@ inputs:
     description: Comma-separated rule ids that should fail the Action when triggered.
     required: false
     default: ""
+  json-output:
+    description: Path where the Action writes the full JSON report.
+    required: false
+    default: pr-test-guard-report.json
+  upload-artifact:
+    description: Upload the JSON report as a GitHub Actions artifact.
+    required: false
+    default: "false"
+  artifact-name:
+    description: Name for the uploaded JSON report artifact.
+    required: false
+    default: pr-test-guard-report
   deep:
     description: Enable bounded targeted probes. Requires test-command.
     required: false
@@ -74,11 +86,13 @@ runs:
         echo "base=$base" >> "$GITHUB_OUTPUT"
 
     - name: Run PR Test Guard
+      id: check
       shell: bash
       env:
         INPUT_COVERAGE: ${{ inputs.coverage }}
         INPUT_CONFIG: ${{ inputs.config }}
         INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_JSON_OUTPUT: ${{ inputs.json-output }}
         INPUT_DEEP: ${{ inputs.deep }}
         INPUT_TEST_COMMAND: ${{ inputs.test-command }}
         INPUT_MAX_PROBES: ${{ inputs.max-probes }}
@@ -99,6 +113,10 @@ runs:
           args+=(--fail-on "$INPUT_FAIL_ON")
         fi
 
+        if [[ -n "$INPUT_JSON_OUTPUT" ]]; then
+          args+=(--json-output "$INPUT_JSON_OUTPUT")
+        fi
+
         if [[ "$INPUT_DEEP" == "true" ]]; then
           if [[ -z "$INPUT_TEST_COMMAND" ]]; then
             echo "deep=true requires test-command." >&2
@@ -107,4 +125,22 @@ runs:
           args+=(--deep --test-command "$INPUT_TEST_COMMAND" --max-probes "$INPUT_MAX_PROBES")
         fi
 
+        set +e
         pr-test-guard "${args[@]}"
+        status=$?
+        set -e
+        echo "exit-code=$status" >> "$GITHUB_OUTPUT"
+
+    - name: Upload PR Test Guard JSON report
+      if: ${{ inputs.upload-artifact == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact-name }}
+        path: ${{ inputs.json-output }}
+        if-no-files-found: warn
+
+    - name: Complete PR Test Guard
+      shell: bash
+      env:
+        EXIT_CODE: ${{ steps.check.outputs.exit-code }}
+      run: exit "${EXIT_CODE:-0}"

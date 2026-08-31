@@ -16,6 +16,7 @@ Version `0.2.4` keeps the first public-ready shape from `0.1.0`, adds determinis
 - dogfood-derived sanitized review examples and public-safe distilled PTG005 controls;
 - text, JSON, and GitHub Actions output;
 - `.pr-test-guard.*` configuration for rule `off` / `warn` / `error`, ignored paths, related-test display limits, and one-off `--fail-on` CI policy;
+- optional `--json-output` report writing and GitHub artifact upload on current main;
 - reusable root `action.yml` with advisory warnings/job summary;
 - executable Python/pytest regression fixtures;
 - normalized real-PR bundle compatibility for development artifacts.
@@ -125,13 +126,15 @@ GitHub summaries group findings by rule, include evidence in tables, and show a
 bounded list of related-test candidates. This makes early adoption practical
 without claiming that every heuristic warning should block merges.
 
+Current main can also write the full JSON result to a configured path and upload
+that report from the GitHub Action before returning a policy failure.
+
 Keep policy separate from detection: the checker identifies signals; the repository decides what blocks a merge.
 
 ## Next: Adoption Controls
 
 After dogfooding stabilizes the signals, consider:
 
-- JSON artifact upload examples;
 - repository path/test mapping configuration beyond ignored finding paths;
 - per-rule thresholds for high-volume findings;
 - richer GitHub annotations with stable grouping keys.

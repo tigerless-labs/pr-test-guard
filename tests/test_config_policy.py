@@ -4,6 +4,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import yaml
+
 from pr_test_guard.cli import main
 
 
@@ -161,3 +163,78 @@ def test_config_and_no_config_are_mutually_exclusive(tmp_path: Path, monkeypatch
     captured = capsys.readouterr()
     assert code == 2
     assert "--config and --no-config" in captured.err
+
+
+def test_check_can_write_json_output_alongside_text_report(tmp_path: Path, monkeypatch, capsys) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "app.py", "def value():\n    return 1\n")
+    write(repo / "tests/test_app.py", "from app import value\n\ndef test_value():\n    assert value() == 1\n")
+    commit_all(repo, "base")
+    write(repo / "app.py", "def value():\n    return 2\n")
+    commit_all(repo, "change production only")
+    monkeypatch.chdir(repo)
+
+    report_path = repo / "artifacts" / "pr-test-guard-report.json"
+    code = main(["check", "--base", "HEAD~1", "--json-output", str(report_path)])
+
+    assert code == 0
+    assert "PR Test Guard" in capsys.readouterr().out
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["summary"]["findings"] == 1
+    assert payload["findings"][0]["rule_id"] == "PTG001"
+
+
+def test_json_output_matches_policy_filtered_stdout(tmp_path: Path, monkeypatch, capsys) -> None:
+    repo = make_weak_mock_repo(tmp_path)
+    write(repo / ".pr-test-guard.yml", "rules:\n  PTG003: off\npolicy:\n  fail_on: [PTG005]\n")
+    monkeypatch.chdir(repo)
+
+    report_path = repo / "report.json"
+    code = main(["check", "--base", "HEAD~1", "--format", "json", "--json-output", str(report_path)])
+
+    assert code == 1
+    stdout_payload = json.loads(capsys.readouterr().out)
+    file_payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert file_payload == stdout_payload
+    assert [item["rule_id"] for item in file_payload["findings"]] == ["PTG005"]
+    assert file_payload["findings"][0]["severity"] == "error"
+
+
+def test_github_format_can_also_write_json_output(tmp_path: Path, monkeypatch, capsys) -> None:
+    repo = make_weak_mock_repo(tmp_path)
+    summary = tmp_path / "summary.md"
+    report_path = repo / "ptg" / "report.json"
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+
+    code = main(["check", "--base", "HEAD~1", "--format", "github", "--json-output", str(report_path)])
+
+    assert code == 0
+    assert "PR Test Guard:" in capsys.readouterr().out
+    assert "## PR Test Guard" in summary.read_text(encoding="utf-8")
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert {item["rule_id"] for item in payload["findings"]} == {"PTG003", "PTG005"}
+
+
+def test_invalid_json_output_path_returns_operational_error(tmp_path: Path, monkeypatch, capsys) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "app.py", "def value():\n    return 1\n")
+    commit_all(repo, "base")
+    monkeypatch.chdir(repo)
+
+    code = main(["check", "--base", "HEAD", "--json-output", str(repo)])
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert "unable to write JSON output" in captured.err
+
+
+def test_action_supports_json_artifact_upload() -> None:
+    action = yaml.safe_load(Path("action.yml").read_text(encoding="utf-8"))
+
+    assert action["inputs"]["json-output"]["default"] == "pr-test-guard-report.json"
+    assert action["inputs"]["upload-artifact"]["default"] == "false"
+    assert action["inputs"]["artifact-name"]["default"] == "pr-test-guard-report"
+    steps = action["runs"]["steps"]
+    assert any(step.get("uses") == "actions/upload-artifact@v4" for step in steps)
+    assert steps[-1]["name"] == "Complete PR Test Guard"
