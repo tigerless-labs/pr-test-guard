@@ -2,9 +2,9 @@
 
 PR Test Guard is a lightweight PR test-quality tool: run fast checks on a pull-request diff, explain what triggered, and fit naturally into local CLI and CI workflows.
 
-Current main keeps the first public-ready shape from `0.1.0`, adds deterministic related-test context, configurable rule policy, richer GitHub output, improves PTG005/PTG006 evidence, adds AST-scoped targeted probe generation for the optional deep path, reduces PTG005 false positives for constrained dependency mocks, and fixes PTG006 rerun correctness around stale Python bytecode.
+Version `0.2.4` keeps the first public-ready shape from `0.1.0`, adds deterministic related-test context, configurable rule policy, richer GitHub output, improves PTG005/PTG006 evidence, adds AST-scoped targeted probe generation for the optional deep path, reduces PTG005 false positives for constrained dependency mocks, and fixes PTG006 rerun correctness around stale Python bytecode.
 
-## What Exists on Main
+## What Exists in 0.2.4
 
 - `pr-test-guard` / `python -m pr_test_guard` entrypoints;
 - `pr-test-guard check --base <base-ref>` for repository-native PR analysis;
@@ -22,7 +22,7 @@ Current main keeps the first public-ready shape from `0.1.0`, adds deterministic
 
 The fixture runner is development infrastructure for the tool. It is not the product's public benchmark identity.
 
-## Current Main: PTG005 Semantic Lite
+## Current: PTG005 Semantic Lite
 
 The PTG005 precision work remains deterministic and offline, with three bounded layers.
 
@@ -53,7 +53,7 @@ The PTG005 precision work remains deterministic and offline, with three bounded 
 
 This layer improves **structural and test-semantics precision**, not business-intent understanding. It still does not decide whether a mock is appropriate, build a repository-wide call graph, or infer dynamic Python types. PTG005 remains advisory. Real-PR dogfooding should measure whether the relationship layer removes low-value warnings while retaining direct changed-symbol and unconstrained changed-internal-dependency cases.
 
-## Current Main: Related Test Context
+## Current: Related Test Context
 
 The direct checker records candidate tests tied to changed symbols through exact
 imports, direct calls, supported mock targets, and test-name tokens when another
@@ -114,7 +114,7 @@ Priority cases:
 - test deletion/skip changes with explicit intent;
 - changed code with good coverage but a surviving targeted probe.
 
-## Current Main: Output and Policy Controls
+## Current: Output and Policy Controls
 
 The CLI now separates detection from policy. Default runs remain advisory, while
 repositories can configure selected rules as `off`, `warn`, or `error`.
