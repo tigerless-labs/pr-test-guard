@@ -306,3 +306,7 @@ The next milestone remains real-PR dogfooding: run the rules across varied repos
 ## License
 
 [MIT](LICENSE)
+
+---
+
+Built by [Tigerless Labs](https://github.com/tigerless-labs), the AI lab of [Tigerless](https://www.tigerless.com) — also home to [tigerless.ai](https://tigerless.ai).
