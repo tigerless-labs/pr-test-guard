@@ -309,4 +309,4 @@ The next milestone remains real-PR dogfooding: run the rules across varied repos
 
 ---
 
-Built by [Tigerless Labs](https://github.com/tigerless-labs) — home of [tigerless.ai](https://tigerless.ai) and the AI lab of [Tigerless](https://www.tigerless.com).
+Built by [Tigerless Labs](https://github.com/tigerless-labs) — the AI lab of [Tigerless](https://tigerless.ai), the company also behind [Tigerless Health Insurance](https://www.tigerless.com).
