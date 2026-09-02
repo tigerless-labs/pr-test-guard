@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pr-test-guard"
-version = "0.2.5"
+version = "0.3.0"
 description = "Lightweight, rule-based test-quality checks for pull requests."
 readme = "README.md"
 requires-python = ">=3.11"

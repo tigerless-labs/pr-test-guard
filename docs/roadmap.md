@@ -2,9 +2,9 @@
 
 PR Test Guard is a lightweight PR test-quality tool: run fast checks on a pull-request diff, explain what triggered, and fit naturally into local CLI and CI workflows.
 
-Version `0.2.5` keeps the first public-ready shape from `0.1.0`, adds deterministic related-test context, configurable rule policy, richer GitHub output, JSON report artifacts, improves PTG005/PTG006 evidence, adds AST-scoped targeted probe generation for the optional deep path, reduces PTG005 false positives for constrained dependency mocks, and fixes PTG006 rerun correctness around stale Python bytecode.
+Version `0.3.0` keeps the first public-ready shape from `0.1.0`, adds deterministic related-test context, configurable rule policy, richer GitHub output, JSON report artifacts, dogfooding review-draft helpers, improves PTG005/PTG006 evidence, adds AST-scoped targeted probe generation for the optional deep path, reduces PTG005 false positives for constrained dependency mocks, and fixes PTG006 rerun correctness around stale Python bytecode.
 
-## What Exists in 0.2.5
+## What Exists in 0.3.0
 
 - `pr-test-guard` / `python -m pr_test_guard` entrypoints;
 - `pr-test-guard check --base <base-ref>` for repository-native PR analysis;
@@ -17,6 +17,7 @@ Version `0.2.5` keeps the first public-ready shape from `0.1.0`, adds determinis
 - text, JSON, and GitHub Actions output;
 - `.pr-test-guard.*` configuration for rule `off` / `warn` / `error`, ignored paths, related-test display limits, and one-off `--fail-on` CI policy;
 - optional `--json-output` report writing and GitHub artifact upload;
+- dogfooding helpers for drafting raw local review records from JSON reports, sanitizing them, and summarizing aggregate reviewer feedback;
 - reusable root `action.yml` with advisory warnings/job summary;
 - executable Python/pytest regression fixtures;
 - normalized real-PR bundle compatibility for development artifacts.
