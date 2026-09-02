@@ -8,10 +8,11 @@ them for public examples, aggregate counts, or rule-planning discussions.
 ## Workflow
 
 1. Run `pr-test-guard check` on a real PR checkout.
-2. Review each finding as a reviewer would.
-3. Keep any raw notes in a local or private location.
-4. Convert the review into a sanitized record.
-5. Aggregate sanitized records to choose the next fixture or rule change.
+2. Draft a local review record from the JSON report.
+3. Review each finding as a reviewer would.
+4. Keep any raw notes in a local or private location.
+5. Convert the review into a sanitized record.
+6. Aggregate sanitized records to choose the next fixture or rule change.
 
 The sanitized record should preserve the evidence shape that matters for rule
 work while avoiding repository-specific details.
@@ -53,6 +54,30 @@ A practical local layout is:
     repo-001-pr-001.json
 ```
 
+Draft the local raw record from a checker JSON report:
+
+```bash
+pr-test-guard check --base origin/main --json-output /tmp/pr-test-guard-report.json
+python3 scripts/draft_dogfood_review.py \
+  /tmp/pr-test-guard-report.json \
+  --review-id review_001 \
+  --repo-alias repo_001 \
+  --pr-alias pr_001 \
+  --test-framework pytest \
+  --test-command-shape pytest \
+  -o ~/private/pr-test-guard-dogfood/raw/repo-001-pr-001.json
+```
+
+The draft keeps local-only fields such as file, line, message, and evidence so
+the reviewer can label the finding. Before publishing or committing anything,
+convert the raw record into the shareable schema:
+
+```bash
+python3 scripts/sanitize_dogfood_review.py \
+  ~/private/pr-test-guard-dogfood/raw/repo-001-pr-001.json \
+  -o ~/private/pr-test-guard-dogfood/sanitized/repo-001-pr-001.json
+```
+
 The public repository can include sanitized examples under
 `examples/dogfood-reviews/` and scripts that operate on sanitized records. Raw
 notes should stay local or in a private workspace.
@@ -64,6 +89,9 @@ Run:
 ```bash
 python3 scripts/summarize_dogfood_reviews.py ~/private/pr-test-guard-dogfood/sanitized
 ```
+
+The summary reports label counts, label rates, top categories, top evidence
+shapes, action counts, and recommended next actions per rule.
 
 Use the aggregate output to decide whether the next PR should add a regression
 fixture, tighten a rule, improve finding evidence, or only update documentation.
