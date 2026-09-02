@@ -20,6 +20,64 @@ def load_script(name: str):
 
 sanitize_module = load_script("sanitize_dogfood_review.py")
 summary_module = load_script("summarize_dogfood_reviews.py")
+draft_module = load_script("draft_dogfood_review.py")
+
+
+def test_draft_review_from_check_report_preserves_local_review_context() -> None:
+    report = {
+        "base": "HEAD~1",
+        "head": "abc123",
+        "summary": {"changed_files": 2, "production_files": 1, "test_files": 1, "findings": 2},
+        "notes": ["PTG002 skipped: no coverage XML was provided."],
+        "probes": {"enabled": True, "generated": 1, "applied": 1, "survived": 1, "baseline_passed": True},
+        "findings": [
+            {
+                "rule_id": "PTG005",
+                "severity": "warning",
+                "file": "tests/payments/test_private_gateway.py",
+                "line": 12,
+                "message": "Mock overlaps changed code.",
+                "evidence": "relationship_type=internal_dependency_mock; changed owner symbol=PrivatePaymentService.charge",
+            },
+            {
+                "rule_id": "PTG006",
+                "severity": "warning",
+                "file": "payments/service.py",
+                "line": 9,
+                "message": "A bounded targeted probe survived.",
+                "evidence": "baseline_passed=true; kind=comparison_boundary; mutation=>= -> >",
+            },
+        ],
+    }
+
+    draft = draft_module.draft_review(
+        report,
+        review_id="review_123",
+        repo_alias="repo_123",
+        pr_alias="pr_456",
+        test_framework="pytest",
+        test_command_shape="pytest",
+    )
+
+    assert draft["source"]["repo_alias"] == "repo_123"
+    assert draft["environment"] == {
+        "language": "python",
+        "test_framework": "pytest",
+        "coverage_supplied": False,
+        "deep_enabled": True,
+        "test_command_shape": "pytest",
+    }
+    assert draft["findings"][0]["review_label"] == "needs_more_context"
+    assert draft["findings"][0]["path_kind"] == "test"
+    assert draft["findings"][0]["dependency_kind"] == "internal"
+    assert draft["findings"][0]["evidence_shape"] == "changed test mocks dependency called from changed line"
+    assert draft["findings"][1]["path_kind"] == "production"
+    assert draft["findings"][1]["evidence_shape"] == "comparison boundary probe survived configured tests"
+
+    sanitized = sanitize_module.sanitize_review(draft)
+    rendered = json.dumps(sanitized)
+    assert "PrivatePaymentService" not in rendered
+    assert "test_private_gateway.py" not in rendered
 
 
 def test_sanitize_review_drops_repository_specific_details() -> None:
@@ -119,9 +177,17 @@ def test_summarize_records_counts_labels_and_categories() -> None:
     assert summary["finding_count"] == 3
     assert summary["rules"]["PTG005"]["labels"]["false_positive"] == 1
     assert summary["rules"]["PTG005"]["labels"]["unclear"] == 1
+    assert summary["rules"]["PTG005"]["label_rates"]["false_positive"] == 0.5
     assert summary["rules"]["PTG005"]["top_categories"] == [
         {"category": "legitimate_internal_helper_mock", "count": 2}
     ]
+    assert summary["rules"]["PTG005"]["top_evidence_shapes"] == [
+        {"evidence_shape": "changed test mocks dependency called from changed line", "count": 2}
+    ]
+    assert summary["rules"]["PTG005"]["actions"] == {
+        "add_fixture": 1,
+        "improve_evidence": 1,
+    }
     assert "add_negative_control_fixture" in summary["rules"]["PTG005"]["recommended_next_actions"]
     assert summary["rules"]["PTG006"]["recommended_next_actions"] == ["keep_rule_behavior"]
 

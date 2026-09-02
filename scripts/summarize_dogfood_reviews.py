@@ -36,6 +36,8 @@ def load_records(root: Path) -> list[dict[str, Any]]:
 def summarize_records(records: list[dict[str, Any]]) -> dict[str, Any]:
     by_rule: dict[str, dict[str, Any]] = {}
     category_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    evidence_shape_counts: dict[str, Counter[str]] = defaultdict(Counter)
+    action_counts: dict[str, Counter[str]] = defaultdict(Counter)
 
     for record in records:
         findings = record.get("findings")
@@ -47,6 +49,8 @@ def summarize_records(records: list[dict[str, Any]]) -> dict[str, Any]:
             rule_id = finding.get("rule_id")
             label = finding.get("review_label")
             category = finding.get("category")
+            evidence_shape = finding.get("evidence_shape")
+            action = finding.get("action")
             if not isinstance(rule_id, str) or label not in LABELS:
                 continue
             bucket = by_rule.setdefault(
@@ -54,7 +58,10 @@ def summarize_records(records: list[dict[str, Any]]) -> dict[str, Any]:
                 {
                     "total": 0,
                     "labels": {item: 0 for item in LABELS},
+                    "label_rates": {item: 0.0 for item in LABELS},
                     "top_categories": [],
+                    "top_evidence_shapes": [],
+                    "actions": {},
                     "recommended_next_actions": [],
                 },
             )
@@ -62,12 +69,26 @@ def summarize_records(records: list[dict[str, Any]]) -> dict[str, Any]:
             bucket["labels"][label] += 1
             if isinstance(category, str) and category:
                 category_counts[rule_id][category] += 1
+            if isinstance(evidence_shape, str) and evidence_shape:
+                evidence_shape_counts[rule_id][evidence_shape] += 1
+            if isinstance(action, str) and action:
+                action_counts[rule_id][action] += 1
 
     for rule_id, bucket in by_rule.items():
+        total = bucket["total"]
+        bucket["label_rates"] = {
+            label: round(count / total, 3) if total else 0.0
+            for label, count in bucket["labels"].items()
+        }
         bucket["top_categories"] = [
             {"category": category, "count": count}
             for category, count in category_counts[rule_id].most_common(5)
         ]
+        bucket["top_evidence_shapes"] = [
+            {"evidence_shape": shape, "count": count}
+            for shape, count in evidence_shape_counts[rule_id].most_common(5)
+        ]
+        bucket["actions"] = dict(sorted(action_counts[rule_id].items()))
         bucket["recommended_next_actions"] = _recommended_actions(bucket)
 
     return {
