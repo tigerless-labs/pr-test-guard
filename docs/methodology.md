@@ -115,6 +115,6 @@ CI integration should be advisory by default. Repositories can opt into stricter
 
 ## Current Limits
 
-The current main branch provides a repository-native `check` command, a reusable GitHub Action, configurable test-path recognition and rule policy, JSON report artifacts, dogfooding review-draft helpers, deterministic related-test context, AST-scoped targeted probes, and PTG005 constrained dependency-mock suppression for the current Python/pytest scope. The checker is intentionally conservative: it does not infer full PR correctness, automatically discover every project's test command, or treat heuristic signals as merge-blocking failures unless the repository explicitly configures that policy.
+Version `0.4.0` provides a repository-native `check` command, a reusable GitHub Action, configurable test-path recognition and rule policy, JSON report artifacts, dogfooding review-draft helpers, deterministic related-test context, AST-scoped targeted probes, and PTG005 constrained dependency-mock suppression for the current Python/pytest scope. The checker is intentionally conservative: it does not infer full PR correctness, automatically discover every project's test command, or treat heuristic signals as merge-blocking failures unless the repository explicitly configures that policy.
 
 The immediate engineering goal is real-PR dogfooding and false-positive reduction. Controlled fixtures remain regression tests for the tool rather than a public benchmark.
