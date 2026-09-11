@@ -78,12 +78,27 @@ paths:
   ignore:
     - "docs/**"
     - "scripts/generated/**"
+  tests:
+    include:
+      - "spec/**"
+      - "**/*_spec.py"
+    exclude:
+      - "src/test_support/**"
 
 related_tests:
   max_candidates: 5
 ```
 
 Rule actions are `off`, `warn`, or `error`. `off` suppresses matching findings, `warn` keeps the default advisory behavior, and `error` makes `pr-test-guard check` exit `1` when that rule triggers. `policy.fail_on` accepts rule ids that should be treated as error-level without repeating them under `rules`.
+
+Test paths use built-in Python/pytest conventions by default. `paths.tests.include`
+adds repository-relative glob patterns for layouts such as `spec/` or
+`*_spec.py`; `paths.tests.exclude` removes matching paths from test
+classification and takes precedence over both configured includes and the
+built-in conventions. This classification is shared by rule detection,
+related-test discovery, and report counts. `paths.ignore` remains separate: it
+suppresses matching findings after detection without changing whether a file is
+treated as production or test code.
 
 To run the same analyzer automatically on pull requests, add a workflow such as:
 
@@ -281,13 +296,14 @@ Patch-coverage tools answer whether changed lines were executed. PR Test Guard k
 
 ## Current Scope
 
-Version `0.3.0` supports direct Python/pytest PR analysis from the current Git repository and a reusable advisory GitHub Action. The direct checker currently surfaces:
+The current main branch supports direct Python/pytest PR analysis from the current Git repository and a reusable advisory GitHub Action. The direct checker currently surfaces:
 
 - production-code changes with no test-file change;
 - uncovered changed Python lines when a coverage XML report is supplied;
 - obvious weak assertions added in changed tests;
 - suspicious test deletion, skip/xfail, or assertion removal;
 - deterministic related-test context for changed Python symbols;
+- repository-configurable test path recognition shared by detection, related-test discovery, and output summaries;
 - lightweight symbol-resolved mock relationships around changed Python symbols and changed call sites, with constrained dependency mocks suppressed from PTG005 warnings;
 - optional bounded targeted probes that survive an explicit test command.
 - configurable rule policy through `.pr-test-guard.yml`, `--config`, `--no-config`, and `--fail-on`.

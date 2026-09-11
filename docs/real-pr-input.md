@@ -64,6 +64,12 @@ policy:
 paths:
   ignore:
     - "docs/**"
+  tests:
+    include:
+      - "spec/**"
+      - "**/*_spec.py"
+    exclude:
+      - "src/test_support/**"
 
 related_tests:
   max_candidates: 5
@@ -71,7 +77,14 @@ related_tests:
 
 Use `--config path/to/config.yml` to pass an explicit file, `--no-config` to run with the default advisory policy, and `--fail-on PTG006,PTG005` for a one-off CI override.
 
-Configuration is applied after detection. It controls which findings are shown and whether the command exits `1`; it does not make heuristic rules more certain.
+Rule actions, `policy.fail_on`, and `paths.ignore` are applied after detection:
+they control which findings are shown and whether the command exits `1` without
+making heuristic rules more certain. Test path configuration participates in
+detection because it determines which changed and tracked files are treated as
+tests. `paths.tests.include` extends the built-in Python/pytest conventions;
+`paths.tests.exclude` takes precedence over configured includes and built-in
+matches. Both accept repository-relative globs. `paths.ignore` only suppresses
+findings and does not change file classification.
 
 ## What the Direct Checker Reads
 
@@ -85,7 +98,7 @@ The current Python/pytest path uses:
 - tracked Python tests for symbol-resolved mock targets and bounded changed-call relationships;
 - optional `coverage.py` XML;
 - optional explicit test command for bounded targeted probes.
-- optional `.pr-test-guard.*` policy configuration.
+- optional `.pr-test-guard.*` test-path and policy configuration.
 - optional JSON report output path for CI artifacts or follow-up analysis.
 
 Missing optional artifacts are reported as skipped checks, not silently converted into negative evidence.

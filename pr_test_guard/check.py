@@ -25,6 +25,7 @@ from .mock_analysis import (
 )
 from .mock_analysis.mocks import build_import_table, resolve_dotted_target
 from .mock_analysis.symbols import PythonSymbol
+from .paths import DEFAULT_TEST_PATH_MATCHER, TestPathMatcher
 from .probes import generate_probes
 
 
@@ -57,6 +58,7 @@ class AnalysisResult:
     probe_summary: dict[str, Any]
     related_tests: list["RelatedTestCandidate"]
     policy: dict[str, Any] | None = None
+    test_paths: TestPathMatcher = DEFAULT_TEST_PATH_MATCHER
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -64,8 +66,10 @@ class AnalysisResult:
             "head": self.head,
             "summary": {
                 "changed_files": len(self.files),
-                "production_files": sum(1 for item in self.files if is_python_path(item.path) and not is_test_path(item.path)),
-                "test_files": sum(1 for item in self.files if is_test_path(item.path)),
+                "production_files": sum(
+                    1 for item in self.files if is_python_path(item.path) and not self.test_paths.is_test(item.path)
+                ),
+                "test_files": sum(1 for item in self.files if self.test_paths.is_test(item.path)),
                 "findings": len(self.findings),
                 "notes": len(self.notes),
                 "related_tests": len(self.related_tests),
@@ -126,15 +130,9 @@ def resolve_commit(repo_root: Path, ref: str) -> str:
 
 
 def is_test_path(path: str) -> bool:
-    normalized = path.replace("\\", "/")
-    parts = normalized.split("/")
-    filename = parts[-1]
-    return (
-        "tests" in parts
-        or "test" in parts[:-1]
-        or filename.startswith("test_")
-        or filename.endswith("_test.py")
-    )
+    """Retain the original helper for callers using the built-in conventions."""
+
+    return DEFAULT_TEST_PATH_MATCHER.is_test(path)
 
 
 def is_python_path(path: str) -> bool:
@@ -206,10 +204,13 @@ def parse_diff(repo_root: Path, base: str) -> list[FileDiff]:
     return sorted(files.values(), key=lambda item: item.path)
 
 
-def changed_code_lines(files: list[FileDiff]) -> dict[str, list[dict[str, Any]]]:
+def changed_code_lines(
+    files: list[FileDiff],
+    test_paths: TestPathMatcher = DEFAULT_TEST_PATH_MATCHER,
+) -> dict[str, list[dict[str, Any]]]:
     changed: dict[str, list[dict[str, Any]]] = {}
     for item in files:
-        if is_test_path(item.path) or not is_python_path(item.path):
+        if test_paths.is_test(item.path) or not is_python_path(item.path):
             continue
         lines = []
         for line, content in item.added:
@@ -248,10 +249,11 @@ def weak_assertion_findings(
     repo_root: Path,
     files: list[FileDiff],
     related_tests: list[RelatedTestCandidate],
+    test_paths: TestPathMatcher = DEFAULT_TEST_PATH_MATCHER,
 ) -> list[Finding]:
     findings: list[Finding] = []
     for diff in files:
-        if not is_test_path(diff.path) or not diff.path.endswith(".py"):
+        if not test_paths.is_test(diff.path) or not diff.path.endswith(".py"):
             continue
         path = repo_root / diff.path
         if not path.is_file():
@@ -288,9 +290,13 @@ def weak_assertion_findings(
     return findings
 
 
-def missing_test_change_findings(files: list[FileDiff], related_tests: list[RelatedTestCandidate]) -> list[Finding]:
-    production = [item for item in files if not is_test_path(item.path) and is_python_path(item.path)]
-    test_changes = [item for item in files if is_test_path(item.path)]
+def missing_test_change_findings(
+    files: list[FileDiff],
+    related_tests: list[RelatedTestCandidate],
+    test_paths: TestPathMatcher = DEFAULT_TEST_PATH_MATCHER,
+) -> list[Finding]:
+    production = [item for item in files if not test_paths.is_test(item.path) and is_python_path(item.path)]
+    test_changes = [item for item in files if test_paths.is_test(item.path)]
     if not production or test_changes:
         return []
     first = production[0]
@@ -306,7 +312,11 @@ def missing_test_change_findings(files: list[FileDiff], related_tests: list[Rela
     ]
 
 
-def test_weakening_findings(repo_root: Path, files: list[FileDiff]) -> list[Finding]:
+def test_weakening_findings(
+    repo_root: Path,
+    files: list[FileDiff],
+    test_paths: TestPathMatcher = DEFAULT_TEST_PATH_MATCHER,
+) -> list[Finding]:
     findings: list[Finding] = []
     skip_names = {
         "pytest.mark.skip",
@@ -317,7 +327,7 @@ def test_weakening_findings(repo_root: Path, files: list[FileDiff]) -> list[Find
         "unittest.expectedFailure",
     }
     for diff in files:
-        if not is_test_path(diff.path):
+        if not test_paths.is_test(diff.path):
             continue
         if diff.status.startswith("D"):
             findings.append(
@@ -470,8 +480,11 @@ def tracked_python_files(repo_root: Path) -> list[str]:
     return [line for line in result.stdout.splitlines() if line]
 
 
-def tracked_test_files(repo_root: Path) -> list[str]:
-    return [line for line in tracked_python_files(repo_root) if is_test_path(line)]
+def tracked_test_files(
+    repo_root: Path,
+    test_paths: TestPathMatcher = DEFAULT_TEST_PATH_MATCHER,
+) -> list[str]:
+    return [line for line in tracked_python_files(repo_root) if test_paths.is_test(line)]
 
 
 def _symbol_tokens(symbol: PythonSymbol) -> set[str]:
@@ -531,13 +544,14 @@ def collect_related_tests(
     changed: dict[str, list[dict[str, Any]]],
     *,
     test_files: list[str] | None = None,
+    test_paths: TestPathMatcher = DEFAULT_TEST_PATH_MATCHER,
 ) -> list[RelatedTestCandidate]:
     symbols = collect_changed_symbols(repo_root, changed)
     if not symbols:
         return []
 
     candidates: list[RelatedTestCandidate] = []
-    paths = test_files if test_files is not None else tracked_test_files(repo_root)
+    paths = test_files if test_files is not None else tracked_test_files(repo_root, test_paths)
     for rel_path in paths:
         path = repo_root / rel_path
         if not path.is_file() or path.suffix != ".py":
@@ -628,24 +642,25 @@ def mock_boundary_findings(
     changed: dict[str, list[dict[str, Any]]],
     files: list[FileDiff],
     notes: list[str],
+    test_paths: TestPathMatcher = DEFAULT_TEST_PATH_MATCHER,
 ) -> list[Finding]:
     symbols = collect_changed_symbols(repo_root, changed)
     if not symbols:
         return []
 
     python_files = tracked_python_files(repo_root)
-    production_python_files = [path for path in python_files if not is_test_path(path)]
+    production_python_files = [path for path in python_files if not test_paths.is_test(path)]
     dependencies = collect_changed_dependency_calls(
         repo_root,
         changed,
         symbols,
         tracked_python_paths=production_python_files,
     )
-    changed_test_files = {item.path for item in files if is_test_path(item.path) and item.status != "D"}
+    changed_test_files = {item.path for item in files if test_paths.is_test(item.path) and item.status != "D"}
     changed_test_lines = {
         item.path: {line for line, _ in item.added}
         for item in files
-        if is_test_path(item.path) and item.status != "D"
+        if test_paths.is_test(item.path) and item.status != "D"
     }
 
     findings: list[Finding] = []
@@ -653,7 +668,7 @@ def mock_boundary_findings(
     suppressed_external = 0
     suppressed_constrained: dict[str, int] = {}
 
-    for rel_path in (line for line in python_files if is_test_path(line)):
+    for rel_path in (line for line in python_files if test_paths.is_test(line)):
         path = repo_root / rel_path
         if not path.is_file():
             continue
@@ -886,23 +901,26 @@ def analyze_repository(
     deep: bool = False,
     test_command: str | None = None,
     max_probes: int = 3,
+    test_path_include: tuple[str, ...] = (),
+    test_path_exclude: tuple[str, ...] = (),
 ) -> AnalysisResult:
     repo_root = repository_root(cwd)
     resolve_commit(repo_root, base)
     head = resolve_commit(repo_root, "HEAD")
     files = parse_diff(repo_root, base)
-    changed = changed_code_lines(files)
+    test_paths = TestPathMatcher(include=test_path_include, exclude=test_path_exclude)
+    changed = changed_code_lines(files, test_paths)
     notes: list[str] = []
-    related_tests = collect_related_tests(repo_root, changed)
+    related_tests = collect_related_tests(repo_root, changed, test_paths=test_paths)
     if changed:
         notes.append(f"Related test context: {related_test_summary(related_tests)}.")
 
     findings: list[Finding] = []
-    findings.extend(missing_test_change_findings(files, related_tests))
+    findings.extend(missing_test_change_findings(files, related_tests, test_paths))
     findings.extend(uncovered_line_findings(repo_root, changed, coverage_path, notes))
-    findings.extend(weak_assertion_findings(repo_root, files, related_tests))
-    findings.extend(test_weakening_findings(repo_root, files))
-    findings.extend(mock_boundary_findings(repo_root, changed, files, notes))
+    findings.extend(weak_assertion_findings(repo_root, files, related_tests, test_paths))
+    findings.extend(test_weakening_findings(repo_root, files, test_paths))
+    findings.extend(mock_boundary_findings(repo_root, changed, files, notes, test_paths))
     probe_findings, probe_summary = targeted_probe_findings(
         repo_root,
         changed,
@@ -928,6 +946,7 @@ def analyze_repository(
         notes=notes,
         probe_summary=probe_summary,
         related_tests=related_tests,
+        test_paths=test_paths,
     )
 
 
