@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import tomllib
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
@@ -29,6 +29,8 @@ class GuardConfig:
     rule_actions: dict[str, str] = field(default_factory=dict)
     fail_on: tuple[str, ...] = ()
     ignore_paths: tuple[str, ...] = ()
+    test_path_include: tuple[str, ...] = ()
+    test_path_exclude: tuple[str, ...] = ()
     related_test_max_candidates: int = 5
 
     def action_for(self, rule_id: str) -> str:
@@ -42,7 +44,13 @@ class GuardConfig:
             "source": self.source,
             "rules": {rule_id: self.action_for(rule_id) for rule_id in RULE_IDS},
             "policy": {"fail_on": list(self.fail_on)},
-            "paths": {"ignore": list(self.ignore_paths)},
+            "paths": {
+                "ignore": list(self.ignore_paths),
+                "tests": {
+                    "include": list(self.test_path_include),
+                    "exclude": list(self.test_path_exclude),
+                },
+            },
             "related_tests": {"max_candidates": self.related_test_max_candidates},
         }
 
@@ -71,6 +79,8 @@ def config_from_overrides(config: GuardConfig, *, fail_on: str | None = None) ->
         rule_actions=dict(config.rule_actions),
         fail_on=merged,
         ignore_paths=config.ignore_paths,
+        test_path_include=config.test_path_include,
+        test_path_exclude=config.test_path_exclude,
         related_test_max_candidates=config.related_test_max_candidates,
     )
 
@@ -107,6 +117,20 @@ def parse_config(raw: Any, *, source: str | None = None) -> GuardConfig:
         raise CheckError("config field 'paths' must be a mapping")
     ignore_paths = _parse_string_list(paths.get("ignore", ()), field_name="paths.ignore")
 
+    test_paths = paths.get("tests", {})
+    if test_paths is None:
+        test_paths = {}
+    if not isinstance(test_paths, dict):
+        raise CheckError("config field 'paths.tests' must be a mapping")
+    test_path_include = _parse_path_patterns(
+        test_paths.get("include", ()),
+        field_name="paths.tests.include",
+    )
+    test_path_exclude = _parse_path_patterns(
+        test_paths.get("exclude", ()),
+        field_name="paths.tests.exclude",
+    )
+
     related_tests = raw.get("related_tests", {})
     if related_tests is None:
         related_tests = {}
@@ -121,6 +145,8 @@ def parse_config(raw: Any, *, source: str | None = None) -> GuardConfig:
         rule_actions=rule_actions,
         fail_on=tuple(sorted(set(fail_on))),
         ignore_paths=tuple(ignore_paths),
+        test_path_include=test_path_include,
+        test_path_exclude=test_path_exclude,
         related_test_max_candidates=max_candidates,
     )
 
@@ -196,3 +222,19 @@ def _parse_string_list(value: Any, *, field_name: str) -> tuple[str, ...]:
     if not all(isinstance(item, str) for item in values):
         raise CheckError(f"{field_name} must contain only strings")
     return tuple(item for item in values if item)
+
+
+def _parse_path_patterns(value: Any, *, field_name: str) -> tuple[str, ...]:
+    patterns = _parse_string_list(value, field_name=field_name)
+    normalized: list[str] = []
+    for pattern in patterns:
+        candidate = pattern.replace("\\", "/")
+        path = PurePosixPath(candidate)
+        if path.is_absolute() or (len(candidate) >= 2 and candidate[1] == ":"):
+            raise CheckError(f"config field '{field_name}' must contain repository-relative globs")
+        if ".." in path.parts:
+            raise CheckError(f"config field '{field_name}' must not contain parent-directory segments")
+        while candidate.startswith("./"):
+            candidate = candidate[2:]
+        normalized.append(candidate)
+    return tuple(normalized)

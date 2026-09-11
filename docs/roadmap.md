@@ -132,11 +132,20 @@ that report from the GitHub Action before returning a policy failure.
 
 Keep policy separate from detection: the checker identifies signals; the repository decides what blocks a merge.
 
+## Current: Configurable Test Paths
+
+Repositories can extend the built-in Python/pytest test path conventions with
+`paths.tests.include` globs and remove false test classifications with
+`paths.tests.exclude`. Excludes take precedence. The resolved classification is
+used consistently by PTG001, PTG003, PTG004, PTG005, related-test discovery,
+and output summaries. This is analysis configuration; `paths.ignore` remains a
+post-detection finding filter.
+
 ## Next: Adoption Controls
 
 After dogfooding stabilizes the signals, consider:
 
-- repository path/test mapping configuration beyond ignored finding paths;
+- explicit source-to-test mapping beyond test path classification;
 - per-rule thresholds for high-volume findings;
 - richer GitHub annotations with stable grouping keys.
 

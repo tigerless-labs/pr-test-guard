@@ -169,6 +169,8 @@ def run_check(parsed: argparse.Namespace) -> int:
             deep=parsed.deep,
             test_command=parsed.test_command,
             max_probes=parsed.max_probes,
+            test_path_include=config.test_path_include,
+            test_path_exclude=config.test_path_exclude,
         )
         result = apply_config(result, config)
         if parsed.json_output:

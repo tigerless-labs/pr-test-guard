@@ -4,9 +4,11 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 from pr_test_guard.cli import main
+from pr_test_guard.config import load_config
 
 
 def run(*args: str, cwd: Path) -> None:
@@ -50,6 +52,27 @@ def make_weak_mock_repo(tmp_path: Path) -> Path:
     )
     commit_all(repo, "change behavior and test")
     return repo
+
+
+@pytest.mark.parametrize(
+    ("name", "content"),
+    [
+        ("guard.json", '{"paths":{"tests":{"include":["spec/**"],"exclude":["spec/helpers/**"]}}}'),
+        ("guard.toml", '[paths.tests]\ninclude = ["spec/**"]\nexclude = ["spec/helpers/**"]\n'),
+    ],
+)
+def test_test_path_config_is_supported_by_structured_config_formats(
+    tmp_path: Path,
+    name: str,
+    content: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / name, content)
+
+    config = load_config(repo, name)
+
+    assert config.test_path_include == ("spec/**",)
+    assert config.test_path_exclude == ("spec/helpers/**",)
 
 
 def test_config_can_disable_rules_and_promote_error_policy(
@@ -134,6 +157,126 @@ def test_paths_ignore_suppresses_matching_findings(tmp_path: Path, monkeypatch, 
     payload = json.loads(capsys.readouterr().out)
     assert payload["findings"] == []
     assert any("matching paths.ignore" in note for note in payload["notes"])
+
+
+def test_custom_test_paths_drive_rules_related_context_and_summary(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "payment.py", "def charge(amount):\n    return amount > 0\n")
+    write(
+        repo / "spec/payment_spec.py",
+        "from payment import charge\n\ndef test_charge():\n    assert charge(1) is True\n",
+    )
+    commit_all(repo, "base")
+
+    write(repo / "payment.py", "def charge(amount):\n    return amount >= 0\n")
+    write(
+        repo / "spec/payment_spec.py",
+        "from unittest.mock import patch\nfrom payment import charge\n\n"
+        "@patch('payment.charge')\n"
+        "def test_charge(mock_charge):\n"
+        "    mock_charge.return_value = True\n"
+        "    result = charge(0)\n"
+        "    assert result is not None\n",
+    )
+    write(
+        repo / ".pr-test-guard.yml",
+        "paths:\n"
+        "  tests:\n"
+        "    include:\n"
+        "      - spec/**\n",
+    )
+    commit_all(repo, "change behavior and custom-layout test")
+    monkeypatch.chdir(repo)
+
+    code = main(["check", "--base", "HEAD~1", "--format", "json"])
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert {item["rule_id"] for item in payload["findings"]} == {"PTG003", "PTG005"}
+    assert payload["summary"]["production_files"] == 1
+    assert payload["summary"]["test_files"] == 1
+    assert payload["summary"]["related_tests"] == 1
+    assert payload["related_tests"][0]["file"] == "spec/payment_spec.py"
+    assert payload["policy"]["paths"]["tests"] == {
+        "include": ["spec/**"],
+        "exclude": [],
+    }
+
+
+def test_custom_test_path_excludes_override_built_in_detection(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "app.py", "def value():\n    return 1\n")
+    write(repo / "test_support.py", "def helper():\n    return 1\n")
+    commit_all(repo, "base")
+
+    write(repo / "app.py", "def value():\n    return 2\n")
+    write(repo / "test_support.py", "def helper():\n    return 2\n")
+    write(
+        repo / ".pr-test-guard.yml",
+        "paths:\n"
+        "  tests:\n"
+        "    include: ['test_*.py']\n"
+        "    exclude: ['test_support.py']\n",
+    )
+    commit_all(repo, "change production helpers")
+    monkeypatch.chdir(repo)
+
+    code = main(["check", "--base", "HEAD~1", "--format", "json"])
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert "PTG001" in {item["rule_id"] for item in payload["findings"]}
+    assert payload["summary"]["production_files"] == 2
+    assert payload["summary"]["test_files"] == 0
+
+
+def test_no_config_ignores_custom_test_path_classification(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "app.py", "def value():\n    return 1\n")
+    write(repo / "spec/app_spec.py", "from app import value\n\ndef test_value():\n    assert value() == 1\n")
+    commit_all(repo, "base")
+    write(repo / "app.py", "def value():\n    return 2\n")
+    write(repo / "spec/app_spec.py", "from app import value\n\ndef test_value():\n    assert value() == 2\n")
+    commit_all(repo, "change")
+    write(repo / ".pr-test-guard.yml", "paths:\n  tests:\n    include: [spec/**]\n")
+    monkeypatch.chdir(repo)
+
+    code = main(["check", "--base", "HEAD~1", "--format", "json", "--no-config"])
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert "PTG001" in {item["rule_id"] for item in payload["findings"]}
+    assert payload["summary"]["test_files"] == 0
+
+
+def test_invalid_custom_test_path_config_returns_operational_error(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "app.py", "def value():\n    return 1\n")
+    commit_all(repo, "base")
+    write(repo / ".pr-test-guard.yml", "paths:\n  tests:\n    include: [../private/**]\n")
+    monkeypatch.chdir(repo)
+
+    code = main(["check", "--base", "HEAD"])
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert "must not contain parent-directory segments" in captured.err
 
 
 def test_invalid_config_returns_operational_error(tmp_path: Path, monkeypatch, capsys) -> None:

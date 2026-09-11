@@ -19,8 +19,10 @@ def _location(item: Finding) -> str:
 
 
 def render_text(result: AnalysisResult) -> str:
-    production = sum(1 for item in result.files if item.path.endswith(".py") and not _is_test_path_for_report(item.path))
-    tests = sum(1 for item in result.files if _is_test_path_for_report(item.path))
+    production = sum(
+        1 for item in result.files if item.path.endswith(".py") and not result.test_paths.is_test(item.path)
+    )
+    tests = sum(1 for item in result.files if result.test_paths.is_test(item.path))
     lines = [
         "PR Test Guard",
         "─────────────",
@@ -151,13 +153,6 @@ def emit_github(result: AnalysisResult) -> str:
     if summary_path:
         Path(summary_path).open("a", encoding="utf-8").write(github_summary(result))
     return "\n".join(output_lines) + "\n"
-
-
-def _is_test_path_for_report(path: str) -> bool:
-    normalized = path.replace("\\", "/")
-    parts = normalized.split("/")
-    filename = parts[-1]
-    return "tests" in parts or "test" in parts[:-1] or filename.startswith("test_") or filename.endswith("_test.py")
 
 
 def _findings_by_rule(findings: list[Finding]) -> list[tuple[str, list[Finding]]]:
