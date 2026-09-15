@@ -68,9 +68,18 @@ to changed Python symbols. The current context layer recognizes exact import
 relationships, direct calls to changed symbols, supported mock targets, and test
 name tokens when another deterministic relationship already exists.
 
+Repositories can also declare source-to-test path mappings for stable
+relationships that are not visible from Python syntax, such as integration
+tests reached through a public entrypoint. A mapping adds every test function in
+a matched tracked test file as a candidate and records both the matched changed
+source path and any changed symbols from that path. Configured mappings are
+additive, respect test-path exclusions, and remain inspectable through the
+`configured_path_mapping` reason.
+
 This is context for review output, not a test-selection oracle. A related test
 candidate may still assert the wrong behavior, and no related candidate does not
-prove that coverage is missing.
+prove that coverage is missing. A configured mapping also does not prove that a
+test ran or suppress the separate PTG001 signal when no test file changed.
 
 ### Mock-boundary evidence
 
@@ -115,6 +124,6 @@ CI integration should be advisory by default. Repositories can opt into stricter
 
 ## Current Limits
 
-Version `0.4.0` provides a repository-native `check` command, a reusable GitHub Action, configurable test-path recognition and rule policy, JSON report artifacts, dogfooding review-draft helpers, deterministic related-test context, AST-scoped targeted probes, and PTG005 constrained dependency-mock suppression for the current Python/pytest scope. The checker is intentionally conservative: it does not infer full PR correctness, automatically discover every project's test command, or treat heuristic signals as merge-blocking failures unless the repository explicitly configures that policy.
+Version `0.4.0` provides a repository-native `check` command, a reusable GitHub Action, configurable test-path recognition and rule policy, JSON report artifacts, dogfooding review-draft helpers, deterministic related-test context, AST-scoped targeted probes, and PTG005 constrained dependency-mock suppression for the current Python/pytest scope. The current development line also supports additive source-to-test path mappings for relationships that cannot be inferred from imports and calls. The checker is intentionally conservative: it does not infer full PR correctness, automatically discover every project's test command, or treat heuristic signals as merge-blocking failures unless the repository explicitly configures that policy.
 
 The immediate engineering goal is real-PR dogfooding and false-positive reduction. Controlled fixtures remain regression tests for the tool rather than a public benchmark.

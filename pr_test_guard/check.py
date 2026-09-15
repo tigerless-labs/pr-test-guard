@@ -25,7 +25,7 @@ from .mock_analysis import (
 )
 from .mock_analysis.mocks import build_import_table, resolve_dotted_target
 from .mock_analysis.symbols import PythonSymbol
-from .paths import DEFAULT_TEST_PATH_MATCHER, TestPathMatcher
+from .paths import DEFAULT_TEST_PATH_MATCHER, RelatedTestMapping, TestPathMatcher
 from .probes import generate_probes
 
 
@@ -89,6 +89,7 @@ class RelatedTestCandidate:
     line: int
     end_line: int
     matched_symbols: tuple[str, ...]
+    matched_sources: tuple[str, ...]
     reasons: tuple[str, ...]
 
     def to_dict(self) -> dict[str, Any]:
@@ -97,6 +98,7 @@ class RelatedTestCandidate:
             "test_name": self.test_name,
             "line": self.line,
             "matched_symbols": list(self.matched_symbols),
+            "matched_sources": list(self.matched_sources),
             "reasons": list(self.reasons),
         }
 
@@ -545,14 +547,22 @@ def collect_related_tests(
     *,
     test_files: list[str] | None = None,
     test_paths: TestPathMatcher = DEFAULT_TEST_PATH_MATCHER,
+    mappings: tuple[RelatedTestMapping, ...] = (),
 ) -> list[RelatedTestCandidate]:
     symbols = collect_changed_symbols(repo_root, changed)
-    if not symbols:
+    if not symbols and not mappings:
         return []
 
     candidates: list[RelatedTestCandidate] = []
     paths = test_files if test_files is not None else tracked_test_files(repo_root, test_paths)
     for rel_path in paths:
+        mapped_sources = {
+            source_path
+            for mapping in mappings
+            if mapping.matches_test(rel_path)
+            for source_path in changed
+            if mapping.matches_source(source_path)
+        }
         path = repo_root / rel_path
         if not path.is_file() or path.suffix != ".py":
             continue
@@ -568,7 +578,13 @@ def collect_related_tests(
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not node.name.startswith("test_"):
                 continue
             matched_symbols: set[str] = set()
+            matched_sources: set[str] = set(mapped_sources)
             reasons: set[str] = set()
+            if mapped_sources:
+                reasons.add("configured_path_mapping")
+                matched_symbols.update(
+                    symbol.canonical_name for symbol in symbols if symbol.file in mapped_sources
+                )
             name_tokens = set(re.findall(r"[a-zA-Z0-9]+", node.name.lower()))
             for symbol in symbols:
                 symbol_reasons = set()
@@ -580,7 +596,7 @@ def collect_related_tests(
                     reasons.update(symbol_reasons)
                     if name_tokens & _symbol_tokens(symbol):
                         reasons.add("test_name_token")
-            if matched_symbols:
+            if matched_symbols or matched_sources:
                 line = int(getattr(node, "lineno", 0))
                 candidates.append(
                     RelatedTestCandidate(
@@ -589,6 +605,7 @@ def collect_related_tests(
                         line=line,
                         end_line=int(getattr(node, "end_lineno", line)),
                         matched_symbols=tuple(sorted(matched_symbols)),
+                        matched_sources=tuple(sorted(matched_sources)),
                         reasons=tuple(sorted(reasons)),
                     )
                 )
@@ -600,12 +617,15 @@ def related_test_summary(related_tests: list[RelatedTestCandidate]) -> str:
     if not related_tests:
         return "related_test_candidates=0"
     symbols = sorted({symbol for item in related_tests for symbol in item.matched_symbols})
+    sources = sorted({source for item in related_tests for source in item.matched_sources})
     reasons = sorted({reason for item in related_tests for reason in item.reasons})
-    return (
-        f"related_test_candidates={len(related_tests)}; "
-        f"related_symbol(s)={', '.join(symbols[:5])}; "
-        f"reason(s)={', '.join(reasons)}"
-    )
+    details = [f"related_test_candidates={len(related_tests)}"]
+    if symbols:
+        details.append(f"related_symbol(s)={', '.join(symbols[:5])}")
+    if sources:
+        details.append(f"related_source(s)={', '.join(sources[:5])}")
+    details.append(f"reason(s)={', '.join(reasons)}")
+    return "; ".join(details)
 
 
 def related_tests_for_location(
@@ -903,6 +923,7 @@ def analyze_repository(
     max_probes: int = 3,
     test_path_include: tuple[str, ...] = (),
     test_path_exclude: tuple[str, ...] = (),
+    related_test_mappings: tuple[RelatedTestMapping, ...] = (),
 ) -> AnalysisResult:
     repo_root = repository_root(cwd)
     resolve_commit(repo_root, base)
@@ -911,7 +932,12 @@ def analyze_repository(
     test_paths = TestPathMatcher(include=test_path_include, exclude=test_path_exclude)
     changed = changed_code_lines(files, test_paths)
     notes: list[str] = []
-    related_tests = collect_related_tests(repo_root, changed, test_paths=test_paths)
+    related_tests = collect_related_tests(
+        repo_root,
+        changed,
+        test_paths=test_paths,
+        mappings=related_test_mappings,
+    )
     if changed:
         notes.append(f"Related test context: {related_test_summary(related_tests)}.")
 

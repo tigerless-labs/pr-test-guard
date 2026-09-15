@@ -11,6 +11,7 @@ from typing import Any
 import yaml
 
 from .check import CheckError
+from .paths import RelatedTestMapping
 
 
 RULE_IDS = ("PTG001", "PTG002", "PTG003", "PTG004", "PTG005", "PTG006")
@@ -32,6 +33,7 @@ class GuardConfig:
     test_path_include: tuple[str, ...] = ()
     test_path_exclude: tuple[str, ...] = ()
     related_test_max_candidates: int = 5
+    related_test_mappings: tuple[RelatedTestMapping, ...] = ()
 
     def action_for(self, rule_id: str) -> str:
         action = self.rule_actions.get(rule_id, "warn")
@@ -51,7 +53,13 @@ class GuardConfig:
                     "exclude": list(self.test_path_exclude),
                 },
             },
-            "related_tests": {"max_candidates": self.related_test_max_candidates},
+            "related_tests": {
+                "max_candidates": self.related_test_max_candidates,
+                "mappings": [
+                    {"source": mapping.source, "tests": list(mapping.tests)}
+                    for mapping in self.related_test_mappings
+                ],
+            },
         }
 
 
@@ -82,6 +90,7 @@ def config_from_overrides(config: GuardConfig, *, fail_on: str | None = None) ->
         test_path_include=config.test_path_include,
         test_path_exclude=config.test_path_exclude,
         related_test_max_candidates=config.related_test_max_candidates,
+        related_test_mappings=config.related_test_mappings,
     )
 
 
@@ -139,6 +148,7 @@ def parse_config(raw: Any, *, source: str | None = None) -> GuardConfig:
     max_candidates = related_tests.get("max_candidates", 5)
     if not isinstance(max_candidates, int) or max_candidates < 0:
         raise CheckError("config field 'related_tests.max_candidates' must be a non-negative integer")
+    related_test_mappings = _parse_related_test_mappings(related_tests.get("mappings", ()))
 
     return GuardConfig(
         source=source,
@@ -148,6 +158,7 @@ def parse_config(raw: Any, *, source: str | None = None) -> GuardConfig:
         test_path_include=test_path_include,
         test_path_exclude=test_path_exclude,
         related_test_max_candidates=max_candidates,
+        related_test_mappings=related_test_mappings,
     )
 
 
@@ -238,3 +249,29 @@ def _parse_path_patterns(value: Any, *, field_name: str) -> tuple[str, ...]:
             candidate = candidate[2:]
         normalized.append(candidate)
     return tuple(normalized)
+
+
+def _parse_related_test_mappings(value: Any) -> tuple[RelatedTestMapping, ...]:
+    field_name = "related_tests.mappings"
+    if value is None:
+        return ()
+    if not isinstance(value, (list, tuple)):
+        raise CheckError(f"config field '{field_name}' must be a list")
+
+    mappings: list[RelatedTestMapping] = []
+    for index, item in enumerate(value):
+        item_name = f"{field_name}[{index}]"
+        if not isinstance(item, dict):
+            raise CheckError(f"config field '{item_name}' must be a mapping")
+
+        source = item.get("source")
+        if not isinstance(source, str) or not source:
+            raise CheckError(f"config field '{item_name}.source' must be a non-empty string")
+        normalized_source = _parse_path_patterns((source,), field_name=f"{item_name}.source")[0]
+
+        tests = _parse_path_patterns(item.get("tests", ()), field_name=f"{item_name}.tests")
+        if not tests:
+            raise CheckError(f"config field '{item_name}.tests' must contain at least one path pattern")
+        mappings.append(RelatedTestMapping(source=normalized_source, tests=tests))
+
+    return tuple(mappings)

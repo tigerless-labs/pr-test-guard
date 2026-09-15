@@ -75,6 +75,34 @@ def test_test_path_config_is_supported_by_structured_config_formats(
     assert config.test_path_exclude == ("spec/helpers/**",)
 
 
+@pytest.mark.parametrize(
+    ("name", "content"),
+    [
+        (
+            "guard.json",
+            '{"related_tests":{"mappings":[{"source":"src/payments/**","tests":["spec/payments/**"]}]}}',
+        ),
+        (
+            "guard.toml",
+            '[[related_tests.mappings]]\nsource = "src/payments/**"\ntests = ["spec/payments/**"]\n',
+        ),
+    ],
+)
+def test_related_test_mappings_are_supported_by_structured_config_formats(
+    tmp_path: Path,
+    name: str,
+    content: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / name, content)
+
+    config = load_config(repo, name)
+
+    assert len(config.related_test_mappings) == 1
+    assert config.related_test_mappings[0].source == "src/payments/**"
+    assert config.related_test_mappings[0].tests == ("spec/payments/**",)
+
+
 def test_config_can_disable_rules_and_promote_error_policy(
     tmp_path: Path,
     monkeypatch,
@@ -236,6 +264,186 @@ def test_custom_test_path_excludes_override_built_in_detection(
     assert "PTG001" in {item["rule_id"] for item in payload["findings"]}
     assert payload["summary"]["production_files"] == 2
     assert payload["summary"]["test_files"] == 0
+
+
+def test_configured_source_test_mapping_adds_indirect_related_test_context(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "src/payments/service.py", "def charge(amount):\n    return amount > 0\n")
+    write(
+        repo / "tests/integration/test_checkout.py",
+        "def test_checkout_decline():\n    assert checkout_status() == 'declined'\n",
+    )
+    commit_all(repo, "base")
+
+    write(repo / "src/payments/service.py", "def charge(amount):\n    return amount >= 0\n")
+    write(
+        repo / ".pr-test-guard.yml",
+        "related_tests:\n"
+        "  mappings:\n"
+        "    - source: src/payments/**\n"
+        "      tests:\n"
+        "        - tests/integration/test_checkout.py\n",
+    )
+    commit_all(repo, "change payment boundary")
+    monkeypatch.chdir(repo)
+
+    code = main(["check", "--base", "HEAD~1", "--format", "json"])
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["summary"]["related_tests"] == 1
+    assert payload["related_tests"][0] == {
+        "file": "tests/integration/test_checkout.py",
+        "line": 1,
+        "matched_sources": ["src/payments/service.py"],
+        "matched_symbols": ["payments.service.charge"],
+        "reasons": ["configured_path_mapping"],
+        "test_name": "test_checkout_decline",
+    }
+    assert payload["policy"]["related_tests"]["mappings"] == [
+        {
+            "source": "src/payments/**",
+            "tests": ["tests/integration/test_checkout.py"],
+        }
+    ]
+    ptg001 = next(item for item in payload["findings"] if item["rule_id"] == "PTG001")
+    assert "related_source(s)=src/payments/service.py" in ptg001["evidence"]
+
+
+def test_related_test_mapping_merges_with_automatic_relationships(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "payment.py", "def charge(amount):\n    return amount > 0\n")
+    write(
+        repo / "tests/test_payment.py",
+        "from payment import charge\n\ndef test_charge():\n    assert charge(1) is True\n",
+    )
+    commit_all(repo, "base")
+
+    write(repo / "payment.py", "def charge(amount):\n    return amount >= 0\n")
+    write(
+        repo / ".pr-test-guard.yml",
+        "related_tests:\n"
+        "  mappings:\n"
+        "    - source: payment.py\n"
+        "      tests: tests/test_payment.py\n",
+    )
+    commit_all(repo, "change charge boundary")
+    monkeypatch.chdir(repo)
+
+    code = main(["check", "--base", "HEAD~1", "--format", "json"])
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["summary"]["related_tests"] == 1
+    candidate = payload["related_tests"][0]
+    assert candidate["matched_sources"] == ["payment.py"]
+    assert candidate["matched_symbols"] == ["payment.charge"]
+    assert candidate["reasons"] == [
+        "configured_path_mapping",
+        "direct_call_changed_symbol",
+        "imports_changed_symbol",
+        "test_name_token",
+    ]
+
+
+def test_related_test_mapping_handles_changed_source_without_python_symbol(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "settings.py", "PAYMENT_TIMEOUT = 10\n")
+    write(repo / "tests/test_settings.py", "def test_timeout_policy():\n    assert configured_timeout() == 10\n")
+    commit_all(repo, "base")
+
+    write(repo / "settings.py", "PAYMENT_TIMEOUT = 20\n")
+    write(
+        repo / ".pr-test-guard.yml",
+        "related_tests:\n"
+        "  mappings:\n"
+        "    - source: settings.py\n"
+        "      tests: [tests/test_settings.py]\n",
+    )
+    commit_all(repo, "change timeout")
+    monkeypatch.chdir(repo)
+
+    code = main(["check", "--base", "HEAD~1", "--format", "json"])
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    candidate = payload["related_tests"][0]
+    assert candidate["matched_symbols"] == []
+    assert candidate["matched_sources"] == ["settings.py"]
+    assert candidate["reasons"] == ["configured_path_mapping"]
+
+
+def test_related_test_mapping_respects_test_path_excludes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "app.py", "def value():\n    return 1\n")
+    write(repo / "tests/helpers/test_factory.py", "def test_factory():\n    assert True\n")
+    commit_all(repo, "base")
+
+    write(repo / "app.py", "def value():\n    return 2\n")
+    write(
+        repo / ".pr-test-guard.yml",
+        "paths:\n"
+        "  tests:\n"
+        "    exclude: [tests/helpers/**]\n"
+        "related_tests:\n"
+        "  mappings:\n"
+        "    - source: app.py\n"
+        "      tests: [tests/helpers/**]\n",
+    )
+    commit_all(repo, "change value")
+    monkeypatch.chdir(repo)
+
+    code = main(["check", "--base", "HEAD~1", "--format", "json"])
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["related_tests"] == []
+
+
+@pytest.mark.parametrize(
+    ("mapping_yaml", "expected"),
+    [
+        ("mappings: invalid", "must be a list"),
+        ("mappings: [invalid]", "must be a mapping"),
+        ("mappings: [{tests: [tests/**]}]", "source' must be a non-empty string"),
+        ("mappings: [{source: '../src/**', tests: [tests/**]}]", "must not contain parent-directory"),
+        ("mappings: [{source: 'src/**', tests: []}]", "must contain at least one path pattern"),
+    ],
+)
+def test_invalid_related_test_mapping_returns_operational_error(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+    mapping_yaml: str,
+    expected: str,
+) -> None:
+    repo = make_repo(tmp_path)
+    write(repo / "app.py", "def value():\n    return 1\n")
+    commit_all(repo, "base")
+    write(repo / ".pr-test-guard.yml", f"related_tests:\n  {mapping_yaml}\n")
+    monkeypatch.chdir(repo)
+
+    code = main(["check", "--base", "HEAD"])
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert expected in captured.err
 
 
 def test_no_config_ignores_custom_test_path_classification(

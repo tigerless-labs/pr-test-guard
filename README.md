@@ -87,6 +87,10 @@ paths:
 
 related_tests:
   max_candidates: 5
+  mappings:
+    - source: "src/payments/**"
+      tests:
+        - "tests/integration/payments/**"
 ```
 
 Rule actions are `off`, `warn`, or `error`. `off` suppresses matching findings, `warn` keeps the default advisory behavior, and `error` makes `pr-test-guard check` exit `1` when that rule triggers. `policy.fail_on` accepts rule ids that should be treated as error-level without repeating them under `rules`.
@@ -99,6 +103,14 @@ built-in conventions. This classification is shared by rule detection,
 related-test discovery, and report counts. `paths.ignore` remains separate: it
 suppresses matching findings after detection without changing whether a file is
 treated as production or test code.
+
+For tests connected through routing, fixtures, or public entrypoints rather than
+a direct Python import or call, `related_tests.mappings` can explicitly map one
+changed source glob to one or more test globs. Mappings add candidates to the
+existing deterministic discovery; they do not replace inferred relationships,
+claim that a test executed, or suppress PTG001 when the PR contains no test-file
+change. Only tracked Python files classified as tests are eligible, so
+`paths.tests.exclude` still takes precedence.
 
 To run the same analyzer automatically on pull requests, add a workflow such as:
 
@@ -253,7 +265,7 @@ PTG005 evidence is emitted as stable key/value context, including the relationsh
 
 Unchanged call sites, untouched tests, deep instance-attribute chains, and other unresolved dynamic relationships remain conservative. A `PTG005` result is still a **candidate signal**; structural and test-semantics evidence does not prove that a mock is inappropriate.
 
-The direct checker also reports related-test candidates using deterministic import, direct-call, mock-target, and test-name context. This makes findings easier to inspect without claiming that a related test fully validates the changed behavior.
+The direct checker also reports related-test candidates using deterministic import, direct-call, mock-target, and test-name context, plus optional repository-configured source-to-test path mappings. This makes findings easier to inspect without claiming that a related test fully validates the changed behavior.
 
 The targeted probe generator is deliberately limited and AST-scoped. It covers a small set of status-code returns, boolean return flips, and comparison-boundary changes on lines added by the current PR while avoiding string/comment matches and unstable multi-line rewrites. A generated probe is not itself a finding: `PTG006` is emitted only when the configured tests pass at baseline and a supported probe survives an actual rerun in an isolated Git worktree.
 
@@ -304,6 +316,7 @@ Version `0.4.0` supports direct Python/pytest PR analysis from the current Git r
 - suspicious test deletion, skip/xfail, or assertion removal;
 - deterministic related-test context for changed Python symbols;
 - repository-configurable test path recognition shared by detection, related-test discovery, and output summaries;
+- additive source-to-test path mappings for indirect related-test relationships;
 - lightweight symbol-resolved mock relationships around changed Python symbols and changed call sites, with constrained dependency mocks suppressed from PTG005 warnings;
 - optional bounded targeted probes that survive an explicit test command.
 - configurable rule policy through `.pr-test-guard.yml`, `--config`, `--no-config`, and `--fail-on`.

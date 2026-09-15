@@ -73,6 +73,10 @@ paths:
 
 related_tests:
   max_candidates: 5
+  mappings:
+    - source: "src/payments/**"
+      tests:
+        - "tests/integration/payments/**"
 ```
 
 Use `--config path/to/config.yml` to pass an explicit file, `--no-config` to run with the default advisory policy, and `--fail-on PTG006,PTG005` for a one-off CI override.
@@ -86,6 +90,14 @@ tests. `paths.tests.include` extends the built-in Python/pytest conventions;
 matches. Both accept repository-relative globs. `paths.ignore` only suppresses
 findings and does not change file classification.
 
+`related_tests.mappings` handles stable repository relationships that cannot be
+recovered from direct Python imports or calls. Each entry has one repository-
+relative `source` glob and a `tests` string or list of globs. A mapping is
+additive: matching candidates are merged with automatically inferred candidates
+and tagged with `configured_path_mapping`. It does not prove test execution or
+change PTG001's definition of a test-file change. Test excludes still take
+precedence over mapping matches.
+
 ## What the Direct Checker Reads
 
 The current Python/pytest path uses:
@@ -94,11 +106,11 @@ The current Python/pytest path uses:
 - changed production and test files;
 - changed Python lines;
 - changed test assertions and skip/xfail markers;
-- deterministic related-test candidates from test imports, direct calls, test names, and mock targets;
+- related-test candidates from deterministic imports, direct calls, test names, mock targets, and optional configured path mappings;
 - tracked Python tests for symbol-resolved mock targets and bounded changed-call relationships;
 - optional `coverage.py` XML;
 - optional explicit test command for bounded targeted probes.
-- optional `.pr-test-guard.*` test-path and policy configuration.
+- optional `.pr-test-guard.*` test-path, related-test mapping, and policy configuration.
 - optional JSON report output path for CI artifacts or follow-up analysis.
 
 Missing optional artifacts are reported as skipped checks, not silently converted into negative evidence.

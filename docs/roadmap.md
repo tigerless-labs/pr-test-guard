@@ -64,9 +64,16 @@ deterministic relationship already exists. This gives findings and summaries a
 small amount of surrounding test context without claiming that the candidate
 test is sufficient.
 
+Repositories can supplement those inferred relationships with explicit
+`related_tests.mappings`. These repository-relative source and test globs cover
+stable integration or routing relationships that are invisible to direct Python
+syntax. Mapping candidates are merged with inferred candidates, retain their
+matched source paths in JSON, and respect configured test-path exclusions.
+
 The context is intentionally conservative: same-name symbols from different
 modules stay unrelated, dynamic calls are not guessed, and business-intent
-mapping remains out of scope for the default path.
+mapping remains out of scope for the default path. Configured path relationships
+are treated as review context, not proof of execution or test sufficiency.
 
 ## Product Principles
 
@@ -146,7 +153,6 @@ post-detection finding filter.
 
 After dogfooding stabilizes the signals, consider:
 
-- explicit source-to-test mapping beyond test path classification;
 - per-rule thresholds for high-volume findings;
 - richer GitHub annotations with stable grouping keys.
 

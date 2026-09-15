@@ -51,9 +51,9 @@ def render_text(result: AnalysisResult) -> str:
     if result.related_tests and related_limit:
         lines.append("Related Tests")
         for item in result.related_tests[:related_limit]:
-            symbols = ", ".join(item.matched_symbols[:3])
+            targets = ", ".join((*item.matched_symbols, *item.matched_sources)[:3])
             reasons = ", ".join(item.reasons)
-            lines.append(f"- {item.file}:{item.line} {item.test_name} ({symbols}; {reasons})")
+            lines.append(f"- {item.file}:{item.line} {item.test_name} ({targets}; {reasons})")
         hidden = len(result.related_tests) - related_limit
         if hidden > 0:
             lines.append(f"- ... {hidden} more related test candidate(s) hidden by related_tests.max_candidates")
@@ -96,7 +96,7 @@ def github_summary(result: AnalysisResult) -> str:
         "## PR Test Guard",
         "",
         f"**{len(result.findings)} review signal(s)** found between `{result.base}` and `HEAD`.",
-        f"**{len(result.related_tests)} related test candidate(s)** identified from deterministic import/call/name context.",
+        f"**{len(result.related_tests)} related test candidate(s)** identified from deterministic or configured path context.",
         f"**Policy:** {_policy_label(result)}.",
         "",
     ]
@@ -120,12 +120,13 @@ def github_summary(result: AnalysisResult) -> str:
     if result.related_tests and related_limit:
         lines.append("### Related Test Candidates")
         lines.append("")
-        lines.extend(["| Test | Changed symbol(s) | Reason(s) |", "| --- | --- | --- |"])
+        lines.extend(["| Test | Changed target(s) | Reason(s) |", "| --- | --- | --- |"])
         for item in result.related_tests[:related_limit]:
+            targets = ", ".join((*item.matched_symbols, *item.matched_sources))
             lines.append(
                 "| "
                 f"`{item.file}:{item.line} {item.test_name}` | "
-                f"{_markdown_cell(', '.join(item.matched_symbols))} | "
+                f"{_markdown_cell(targets)} | "
                 f"{_markdown_cell(', '.join(item.reasons))} |"
             )
         hidden = len(result.related_tests) - related_limit
