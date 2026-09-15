@@ -171,6 +171,7 @@ def run_check(parsed: argparse.Namespace) -> int:
             max_probes=parsed.max_probes,
             test_path_include=config.test_path_include,
             test_path_exclude=config.test_path_exclude,
+            related_test_mappings=config.related_test_mappings,
         )
         result = apply_config(result, config)
         if parsed.json_output:

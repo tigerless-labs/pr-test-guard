@@ -48,4 +48,18 @@ class TestPathMatcher:
         return _matches_default_test_shape(normalized) or _matches(normalized, self.include)
 
 
+@dataclass(frozen=True, slots=True)
+class RelatedTestMapping:
+    """Map changed source paths to repository-specific test paths."""
+
+    source: str
+    tests: tuple[str, ...]
+
+    def matches_source(self, path: str) -> bool:
+        return _matches(normalize_repo_path(path), (self.source,))
+
+    def matches_test(self, path: str) -> bool:
+        return _matches(normalize_repo_path(path), self.tests)
+
+
 DEFAULT_TEST_PATH_MATCHER = TestPathMatcher()
