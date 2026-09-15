@@ -2,9 +2,9 @@
 
 PR Test Guard is a lightweight PR test-quality tool: run fast checks on a pull-request diff, explain what triggered, and fit naturally into local CLI and CI workflows.
 
-Version `0.4.0` builds on the first public-ready Python/pytest path with repository-configurable test path recognition. Configured test includes and excludes now drive rule detection, related-test discovery, and report counts consistently while the existing conventions remain the default.
+Version `0.5.0` builds on the first public-ready Python/pytest path with explicit source-to-test path mappings. Repositories can now supplement inferred import/call relationships with stable path-level context for indirect integration and routing tests.
 
-## What Exists in 0.4.0
+## What Exists in 0.5.0
 
 - `pr-test-guard` / `python -m pr_test_guard` entrypoints;
 - `pr-test-guard check --base <base-ref>` for repository-native PR analysis;
@@ -17,6 +17,7 @@ Version `0.4.0` builds on the first public-ready Python/pytest path with reposit
 - text, JSON, and GitHub Actions output;
 - `.pr-test-guard.*` configuration for rule `off` / `warn` / `error`, ignored paths, related-test display limits, and one-off `--fail-on` CI policy;
 - `paths.tests.include` / `paths.tests.exclude` configuration for repository-specific test layouts;
+- `related_tests.mappings` configuration for additive source-to-test path relationships;
 - optional `--json-output` report writing and GitHub artifact upload;
 - dogfooding helpers for drafting raw local review records from JSON reports, sanitizing them, and summarizing aggregate reviewer feedback;
 - reusable root `action.yml` with advisory warnings/job summary;
