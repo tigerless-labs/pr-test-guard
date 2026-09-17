@@ -8,7 +8,8 @@ import pytest
 import yaml
 
 from pr_test_guard.cli import main
-from pr_test_guard.config import load_config
+from pr_test_guard.check import CheckError
+from pr_test_guard.config import load_config, parse_config
 
 
 def run(*args: str, cwd: Path) -> None:
@@ -52,6 +53,119 @@ def make_weak_mock_repo(tmp_path: Path) -> Path:
     )
     commit_all(repo, "change behavior and test")
     return repo
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ({"rulse": {}}, "unknown config field 'config.rulse'; did you mean 'rules'?"),
+        ({"policy": {"fail": []}}, "unknown config field 'policy.fail'; did you mean 'fail_on'?"),
+        ({"paths": {"test": {}}}, "unknown config field 'paths.test'; did you mean 'tests'?"),
+        (
+            {"paths": {"tests": {"includes": ["spec/**"]}}},
+            "unknown config field 'paths.tests.includes'; did you mean 'include'?",
+        ),
+        (
+            {"related_tests": {"max_candidate": 3}},
+            "unknown config field 'related_tests.max_candidate'; did you mean 'max_candidates'?",
+        ),
+        (
+            {
+                "related_tests": {
+                    "mappings": [
+                        {"source": "src/**", "tests": ["tests/**"], "test": ["spec/**"]}
+                    ]
+                }
+            },
+            "unknown config field 'related_tests.mappings[0].test'; did you mean 'tests'?",
+        ),
+        (
+            {"rules": {"PTG001": {"level": "warn", "enabled": True}}},
+            "unknown config field 'rules.PTG001.enabled'",
+        ),
+    ],
+)
+def test_config_rejects_unknown_fields_with_actionable_errors(raw, expected: str) -> None:
+    with pytest.raises(CheckError) as raised:
+        parse_config(raw)
+
+    assert str(raised.value) == expected
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (
+            {"related_tests": {"max_candidates": True}},
+            "related_tests.max_candidates' must be a non-negative integer",
+        ),
+        (
+            {"paths": {"ignore": [""]}},
+            "paths.ignore' must not contain empty strings",
+        ),
+        (
+            {"paths": {"tests": {"include": ["  "]}}},
+            "paths.tests.include' must not contain empty strings",
+        ),
+        (
+            {"rules": {"PTG001": {"level": "warn", "action": "error"}}},
+            "rules.PTG001' must contain exactly one of: level, action",
+        ),
+        (
+            {"rules": {"PTG001": {}}},
+            "rules.PTG001' must contain exactly one of: level, action",
+        ),
+        (
+            {"rules": {"PTG001": "warn", "ptg001": "error"}},
+            "duplicate rule id after normalization: PTG001",
+        ),
+    ],
+)
+def test_config_rejects_ambiguous_or_silent_noop_values(raw, expected: str) -> None:
+    with pytest.raises(CheckError) as raised:
+        parse_config(raw)
+
+    assert expected in str(raised.value)
+
+
+def test_validate_config_prints_normalized_json(tmp_path: Path, monkeypatch, capsys) -> None:
+    write(
+        tmp_path / "guard.yml",
+        "rules:\n  ptg001:\n    level: error\nrelated_tests:\n  max_candidates: 2\n",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    code = main(["validate-config", "--config", "guard.yml", "--format", "json"])
+
+    assert code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["rules"]["PTG001"] == "error"
+    assert payload["rules"]["PTG006"] == "warn"
+    assert payload["related_tests"]["max_candidates"] == 2
+    assert payload["source"] == str(tmp_path / "guard.yml")
+
+
+def test_validate_config_reports_discovery_and_typos(tmp_path: Path, monkeypatch, capsys) -> None:
+    write(tmp_path / ".pr-test-guard.yml", "related_tests:\n  max_candidate: 2\n")
+    monkeypatch.chdir(tmp_path)
+
+    code = main(["validate-config"])
+
+    captured = capsys.readouterr()
+    assert code == 2
+    assert captured.out == ""
+    assert "did you mean 'max_candidates'?" in captured.err
+
+
+def test_validate_config_accepts_built_in_defaults(tmp_path: Path, monkeypatch, capsys) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    code = main(["validate-config"])
+
+    captured = capsys.readouterr()
+    assert code == 0
+    assert "Configuration valid: built-in defaults (no config file found)" in captured.out
+    assert '"source": null' in captured.out
 
 
 @pytest.mark.parametrize(

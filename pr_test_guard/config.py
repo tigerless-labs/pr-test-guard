@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import tomllib
 from dataclasses import dataclass, field
+from difflib import get_close_matches
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -22,6 +23,7 @@ DEFAULT_CONFIG_NAMES = (
     ".pr-test-guard.json",
     ".pr-test-guard.toml",
 )
+TOP_LEVEL_FIELDS = ("rules", "policy", "paths", "related_tests")
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +101,7 @@ def parse_config(raw: Any, *, source: str | None = None) -> GuardConfig:
         raw = {}
     if not isinstance(raw, dict):
         raise CheckError(f"config {source or '<memory>'} must contain a mapping")
+    _reject_unknown_fields(raw, field_name="config", allowed=TOP_LEVEL_FIELDS)
 
     rules = raw.get("rules", {})
     if rules is None:
@@ -109,6 +112,10 @@ def parse_config(raw: Any, *, source: str | None = None) -> GuardConfig:
     rule_actions: dict[str, str] = {}
     for rule_id, value in rules.items():
         normalized_rule = _normalize_rule_id(str(rule_id), field_name="rules")
+        if normalized_rule in rule_actions:
+            raise CheckError(
+                f"config field 'rules' contains duplicate rule id after normalization: {normalized_rule}"
+            )
         action = _normalize_rule_action(value, field_name=f"rules.{normalized_rule}")
         rule_actions[normalized_rule] = action
 
@@ -117,6 +124,7 @@ def parse_config(raw: Any, *, source: str | None = None) -> GuardConfig:
         policy = {}
     if not isinstance(policy, dict):
         raise CheckError("config field 'policy' must be a mapping")
+    _reject_unknown_fields(policy, field_name="policy", allowed=("fail_on",))
     fail_on = _parse_rule_list(policy.get("fail_on", ()), field_name="policy.fail_on")
 
     paths = raw.get("paths", {})
@@ -124,13 +132,19 @@ def parse_config(raw: Any, *, source: str | None = None) -> GuardConfig:
         paths = {}
     if not isinstance(paths, dict):
         raise CheckError("config field 'paths' must be a mapping")
-    ignore_paths = _parse_string_list(paths.get("ignore", ()), field_name="paths.ignore")
+    _reject_unknown_fields(paths, field_name="paths", allowed=("ignore", "tests"))
+    ignore_paths = _parse_path_patterns(paths.get("ignore", ()), field_name="paths.ignore")
 
     test_paths = paths.get("tests", {})
     if test_paths is None:
         test_paths = {}
     if not isinstance(test_paths, dict):
         raise CheckError("config field 'paths.tests' must be a mapping")
+    _reject_unknown_fields(
+        test_paths,
+        field_name="paths.tests",
+        allowed=("include", "exclude"),
+    )
     test_path_include = _parse_path_patterns(
         test_paths.get("include", ()),
         field_name="paths.tests.include",
@@ -145,8 +159,13 @@ def parse_config(raw: Any, *, source: str | None = None) -> GuardConfig:
         related_tests = {}
     if not isinstance(related_tests, dict):
         raise CheckError("config field 'related_tests' must be a mapping")
+    _reject_unknown_fields(
+        related_tests,
+        field_name="related_tests",
+        allowed=("max_candidates", "mappings"),
+    )
     max_candidates = related_tests.get("max_candidates", 5)
-    if not isinstance(max_candidates, int) or max_candidates < 0:
+    if isinstance(max_candidates, bool) or not isinstance(max_candidates, int) or max_candidates < 0:
         raise CheckError("config field 'related_tests.max_candidates' must be a non-negative integer")
     related_test_mappings = _parse_related_test_mappings(related_tests.get("mappings", ()))
 
@@ -194,7 +213,11 @@ def _normalize_rule_id(value: str, *, field_name: str) -> str:
 
 def _normalize_rule_action(value: Any, *, field_name: str) -> str:
     if isinstance(value, dict):
-        value = value.get("level", value.get("action"))
+        _reject_unknown_fields(value, field_name=field_name, allowed=("level", "action"))
+        configured_fields = [name for name in ("level", "action") if name in value]
+        if len(configured_fields) != 1:
+            raise CheckError(f"config field '{field_name}' must contain exactly one of: level, action")
+        value = value[configured_fields[0]]
     if isinstance(value, bool):
         return "warn" if value else "off"
     if not isinstance(value, str):
@@ -232,7 +255,9 @@ def _parse_string_list(value: Any, *, field_name: str) -> tuple[str, ...]:
         raise CheckError(f"{field_name} must be a string or list of strings")
     if not all(isinstance(item, str) for item in values):
         raise CheckError(f"{field_name} must contain only strings")
-    return tuple(item for item in values if item)
+    if any(not item.strip() for item in values):
+        raise CheckError(f"config field '{field_name}' must not contain empty strings")
+    return tuple(values)
 
 
 def _parse_path_patterns(value: Any, *, field_name: str) -> tuple[str, ...]:
@@ -247,6 +272,8 @@ def _parse_path_patterns(value: Any, *, field_name: str) -> tuple[str, ...]:
             raise CheckError(f"config field '{field_name}' must not contain parent-directory segments")
         while candidate.startswith("./"):
             candidate = candidate[2:]
+        if not candidate or candidate == ".":
+            raise CheckError(f"config field '{field_name}' must not contain empty path patterns")
         normalized.append(candidate)
     return tuple(normalized)
 
@@ -263,6 +290,7 @@ def _parse_related_test_mappings(value: Any) -> tuple[RelatedTestMapping, ...]:
         item_name = f"{field_name}[{index}]"
         if not isinstance(item, dict):
             raise CheckError(f"config field '{item_name}' must be a mapping")
+        _reject_unknown_fields(item, field_name=item_name, allowed=("source", "tests"))
 
         source = item.get("source")
         if not isinstance(source, str) or not source:
@@ -275,3 +303,20 @@ def _parse_related_test_mappings(value: Any) -> tuple[RelatedTestMapping, ...]:
         mappings.append(RelatedTestMapping(source=normalized_source, tests=tests))
 
     return tuple(mappings)
+
+
+def _reject_unknown_fields(
+    value: dict[Any, Any],
+    *,
+    field_name: str,
+    allowed: tuple[str, ...],
+) -> None:
+    for key in value:
+        if not isinstance(key, str):
+            raise CheckError(f"config field '{field_name}' must contain only string keys")
+        if key in allowed:
+            continue
+        qualified = f"{field_name}.{key}"
+        matches = get_close_matches(key, allowed, n=1, cutoff=0.6)
+        suggestion = f"; did you mean '{matches[0]}'?" if matches else ""
+        raise CheckError(f"unknown config field '{qualified}'{suggestion}")

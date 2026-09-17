@@ -1,14 +1,14 @@
 <h1 align="center">PR Test Guard</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/release-v0.5.0-brightgreen.svg" alt="release v0.5.0" /> <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+" /> <img src="https://img.shields.io/badge/output-JSON%20%7C%20Markdown-lightgrey.svg" alt="JSON and Markdown output" /> <img src="https://img.shields.io/badge/scope-Python%2Fpytest-yellow.svg" alt="Python pytest scope" /> <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="license MIT" />
+  <img src="https://img.shields.io/badge/release-v0.5.1-brightgreen.svg" alt="release v0.5.1" /> <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+" /> <img src="https://img.shields.io/badge/output-JSON%20%7C%20Markdown-lightgrey.svg" alt="JSON and Markdown output" /> <img src="https://img.shields.io/badge/scope-Python%2Fpytest-yellow.svg" alt="Python pytest scope" /> <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="license MIT" />
 </p>
 
 **Lightweight, rule-based test-quality checks for pull requests.**
 
 PR Test Guard helps reviewers spot PRs that look tested but still carry obvious test-quality risks: missing test changes, uncovered changed code, weak assertions, mismatched tests, or mocks that may replace the behavior under review.
 
-The project is CLI-first and designed to fit naturally into CI. Its default behavior is advisory: surface actionable signals for reviewers, and let each repository decide which rules, if any, should become merge-blocking policy. Version `0.5.0` adds explicit source-to-test path mappings for stable relationships that cannot be inferred from Python imports and calls.
+The project is CLI-first and designed to fit naturally into CI. Its default behavior is advisory: surface actionable signals for reviewers, and let each repository decide which rules, if any, should become merge-blocking policy. Version `0.5.1` adds strict configuration validation and a standalone preflight command on top of the source-to-test mappings introduced in `0.5.0`.
 
 | | |
 | --- | --- |
@@ -93,6 +93,18 @@ related_tests:
         - "tests/integration/payments/**"
 ```
 
+Validate configuration without requiring a Git repository or PR diff:
+
+```bash
+pr-test-guard validate-config
+pr-test-guard validate-config --config config/pr-test-guard.yml --format json
+```
+
+Version `0.5.1` rejects unknown fields, ambiguous rule objects, empty path
+patterns, and invalid integer values instead of silently ignoring them. Errors
+include the full field path and suggest a nearby supported name when possible.
+The JSON form prints the normalized effective configuration for automation.
+
 Rule actions are `off`, `warn`, or `error`. `off` suppresses matching findings, `warn` keeps the default advisory behavior, and `error` makes `pr-test-guard check` exit `1` when that rule triggers. `policy.fail_on` accepts rule ids that should be treated as error-level without repeating them under `rules`.
 
 Test paths use built-in Python/pytest conventions by default. `paths.tests.include`
@@ -131,7 +143,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: tigerless-labs/pr-test-guard@v0.5.0
+      - uses: tigerless-labs/pr-test-guard@v0.5.1
         with:
           base: origin/${{ github.base_ref }}
           config: .pr-test-guard.yml
@@ -140,7 +152,7 @@ jobs:
 Coverage and deep probes are opt-in Action inputs. Deep mode assumes the workflow has already installed the target repository's own test dependencies and that the configured test command passes before PR Test Guard runs:
 
 ```yaml
-      - uses: tigerless-labs/pr-test-guard@v0.5.0
+      - uses: tigerless-labs/pr-test-guard@v0.5.1
         with:
           base: origin/${{ github.base_ref }}
           coverage: coverage.xml
@@ -153,7 +165,7 @@ Coverage and deep probes are opt-in Action inputs. Deep mode assumes the workflo
 The Action can also write and optionally upload a structured JSON report:
 
 ```yaml
-      - uses: tigerless-labs/pr-test-guard@v0.5.0
+      - uses: tigerless-labs/pr-test-guard@v0.5.1
         with:
           base: origin/${{ github.base_ref }}
           json-output: pr-test-guard-report.json
@@ -304,11 +316,11 @@ Patch-coverage tools answer whether changed lines were executed. PR Test Guard k
 - [Rule Fixtures](docs/rule-fixtures.md): how controlled fixtures define expected rule behavior for regression testing.
 - [Validation Strategy](docs/validation-strategy.md): how to validate rule usefulness, false positives, and real-world behavior.
 - [Runner Artifacts](docs/runner-artifacts.md): what the current regression-fixture runner emits.
-- [Roadmap](docs/roadmap.md): the lightweight CLI and GitHub Action path from the current `0.5.0` release.
+- [Roadmap](docs/roadmap.md): the lightweight CLI and GitHub Action path from the current `0.5.1` release.
 
 ## Current Scope
 
-Version `0.5.0` supports direct Python/pytest PR analysis from the current Git repository and a reusable advisory GitHub Action. The direct checker currently surfaces:
+Version `0.5.1` supports direct Python/pytest PR analysis from the current Git repository, strict standalone configuration validation, and a reusable advisory GitHub Action. The direct checker currently surfaces:
 
 - production-code changes with no test-file change;
 - uncovered changed Python lines when a coverage XML report is supplied;
