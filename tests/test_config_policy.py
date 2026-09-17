@@ -83,6 +83,10 @@ def make_weak_mock_repo(tmp_path: Path) -> Path:
             {"rules": {"PTG001": {"level": "warn", "enabled": True}}},
             "unknown config field 'rules.PTG001.enabled'",
         ),
+        (
+            {"github": {"annotations": {"max": 5}}},
+            "unknown config field 'github.annotations.max'",
+        ),
     ],
 )
 def test_config_rejects_unknown_fields_with_actionable_errors(raw, expected: str) -> None:
@@ -119,6 +123,14 @@ def test_config_rejects_unknown_fields_with_actionable_errors(raw, expected: str
             {"rules": {"PTG001": "warn", "ptg001": "error"}},
             "duplicate rule id after normalization: PTG001",
         ),
+        (
+            {"github": {"annotations": {"max_total": True}}},
+            "github.annotations.max_total' must be a non-negative integer",
+        ),
+        (
+            {"github": {"annotations": {"max_per_rule": -1}}},
+            "github.annotations.max_per_rule' must be a non-negative integer",
+        ),
     ],
 )
 def test_config_rejects_ambiguous_or_silent_noop_values(raw, expected: str) -> None:
@@ -142,7 +154,33 @@ def test_validate_config_prints_normalized_json(tmp_path: Path, monkeypatch, cap
     assert payload["rules"]["PTG001"] == "error"
     assert payload["rules"]["PTG006"] == "warn"
     assert payload["related_tests"]["max_candidates"] == 2
+    assert payload["github"]["annotations"] == {"max_per_rule": 10, "max_total": 50}
     assert payload["source"] == str(tmp_path / "guard.yml")
+
+
+@pytest.mark.parametrize(
+    ("name", "content"),
+    [
+        ("guard.yml", "github:\n  annotations:\n    max_total: 12\n    max_per_rule: 3\n"),
+        ("guard.json", '{"github":{"annotations":{"max_total":12,"max_per_rule":3}}}'),
+        ("guard.toml", "[github.annotations]\nmax_total = 12\nmax_per_rule = 3\n"),
+    ],
+)
+def test_github_annotation_limits_support_all_config_formats(
+    tmp_path: Path,
+    name: str,
+    content: str,
+) -> None:
+    write(tmp_path / name, content)
+
+    config = load_config(tmp_path, name)
+
+    assert config.github_annotation_max_total == 12
+    assert config.github_annotation_max_per_rule == 3
+    assert config.to_dict()["github"]["annotations"] == {
+        "max_total": 12,
+        "max_per_rule": 3,
+    }
 
 
 def test_validate_config_reports_discovery_and_typos(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -280,12 +318,75 @@ def test_github_output_uses_error_annotations_and_grouped_summary(
 
     assert code == 1
     output = capsys.readouterr().out
-    assert "::error file=tests/test_payment.py,line=4::[PTG005]" in output
+    assert (
+        "::error title=PR Test Guard / PTG005,file=tests/test_payment.py,line=4::[PTG005]"
+        in output
+    )
     rendered_summary = summary.read_text(encoding="utf-8")
     assert "### PTG003 (1 warning)" in rendered_summary
     assert "### PTG005 (1 error)" in rendered_summary
     assert "### Related Test Candidates" in rendered_summary
     assert "Configured policy failed" in rendered_summary
+
+
+def test_github_annotation_limits_flow_from_config_without_truncating_json(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo = make_weak_mock_repo(tmp_path)
+    summary = tmp_path / "summary.md"
+    outputs = tmp_path / "outputs.txt"
+    report = tmp_path / "report.json"
+    write(
+        repo / ".pr-test-guard.yml",
+        "policy:\n"
+        "  fail_on: [PTG005]\n"
+        "github:\n"
+        "  annotations:\n"
+        "    max_total: 1\n"
+        "    max_per_rule: 1\n",
+    )
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    monkeypatch.setenv("GITHUB_OUTPUT", str(outputs))
+
+    code = main(
+        [
+            "check",
+            "--base",
+            "HEAD~1",
+            "--format",
+            "github",
+            "--json-output",
+            str(report),
+        ]
+    )
+
+    assert code == 1
+    output = capsys.readouterr().out
+    annotation_lines = [line for line in output.splitlines() if line.startswith("::")]
+    assert len(annotation_lines) == 1
+    assert "::error title=PR Test Guard / PTG005" in annotation_lines[0]
+    assert "1 annotation(s) emitted; 1 omitted; failed" in output
+
+    summary_text = summary.read_text(encoding="utf-8")
+    assert "PTG003=1" in summary_text
+    assert "### PTG003 (1 warning)" in summary_text
+    assert "### PTG005 (1 error)" in summary_text
+
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    assert {item["rule_id"] for item in payload["findings"]} == {"PTG003", "PTG005"}
+    assert payload["policy"]["github"]["annotations"] == {
+        "max_total": 1,
+        "max_per_rule": 1,
+    }
+    assert outputs.read_text(encoding="utf-8").splitlines() == [
+        "status=failed",
+        "findings-count=2",
+        "warning-count=1",
+        "error-count=1",
+    ]
 
 
 def test_paths_ignore_suppresses_matching_findings(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -700,6 +801,19 @@ def test_action_supports_json_artifact_upload() -> None:
     assert action["inputs"]["json-output"]["default"] == "pr-test-guard-report.json"
     assert action["inputs"]["upload-artifact"]["default"] == "false"
     assert action["inputs"]["artifact-name"]["default"] == "pr-test-guard-report"
+    assert set(action["outputs"]) == {
+        "status",
+        "findings-count",
+        "warning-count",
+        "error-count",
+        "report-path",
+    }
+    assert action["outputs"]["status"]["value"] == "${{ steps.check.outputs.status }}"
+    assert action["outputs"]["report-path"]["value"] == "${{ steps.check.outputs.report-path }}"
     steps = action["runs"]["steps"]
     assert any(step.get("uses") == "actions/upload-artifact@v4" for step in steps)
+    check_step = next(step for step in steps if step.get("id") == "check")
+    assert 'echo "report-path=$INPUT_JSON_OUTPUT" >> "$GITHUB_OUTPUT"' in check_step["run"]
+    assert 'echo "status=operational-error" >> "$GITHUB_OUTPUT"' in check_step["run"]
+    assert 'echo "exit-code=2" >> "$GITHUB_OUTPUT"' in check_step["run"]
     assert steps[-1]["name"] == "Complete PR Test Guard"

@@ -2,9 +2,9 @@
 
 PR Test Guard is a lightweight PR test-quality tool: run fast checks on a pull-request diff, explain what triggered, and fit naturally into local CLI and CI workflows.
 
-Version `0.5.1` builds on the first public-ready Python/pytest path with strict configuration validation and a standalone configuration preflight command. Repositories can inspect normalized effective policy before analysis, while the explicit source-to-test path mappings introduced in `0.5.0` continue to supplement inferred import/call relationships.
+Version `0.6.0` builds on the first public-ready Python/pytest path with bounded, stably grouped GitHub annotations and reusable Action outputs. Repositories can keep workflow noise controlled without losing findings from the GitHub Summary or JSON report, and downstream steps can consume policy-filtered result counts directly.
 
-## What Exists in 0.5.1
+## What Exists in 0.6.0
 
 - `pr-test-guard` / `python -m pr_test_guard` entrypoints;
 - `pr-test-guard check --base <base-ref>` for repository-native PR analysis;
@@ -22,6 +22,8 @@ Version `0.5.1` builds on the first public-ready Python/pytest path with strict 
 - optional `--json-output` report writing and GitHub artifact upload;
 - dogfooding helpers for drafting raw local review records from JSON reports, sanitizing them, and summarizing aggregate reviewer feedback;
 - reusable root `action.yml` with advisory warnings/job summary;
+- configurable total/per-rule GitHub annotation limits with error-first deterministic selection;
+- stable annotation titles, workflow-command property escaping, and composite Action result outputs;
 - executable Python/pytest regression fixtures;
 - normalized real-PR bundle compatibility for development artifacts.
 
@@ -137,6 +139,12 @@ GitHub summaries group findings by rule, include evidence in tables, and show a
 bounded list of related-test candidates. This makes early adoption practical
 without claiming that every heuristic warning should block merges.
 
+The workflow-command annotation stream is independently bounded by total and
+per-rule limits. It uses stable `PR Test Guard / PTGxxx` titles, prioritizes
+error findings, reports omissions in the summary, and leaves the complete
+summary tables and JSON result intact. The Action also exposes status and
+finding counts for downstream workflow steps.
+
 The checker can also write the full JSON result to a configured path and upload
 that report from the GitHub Action before returning a policy failure.
 
@@ -151,12 +159,12 @@ used consistently by PTG001, PTG003, PTG004, PTG005, related-test discovery,
 and output summaries. This is analysis configuration; `paths.ignore` remains a
 post-detection finding filter.
 
-## Next: Adoption Controls
+## Current: GitHub Adoption Controls
 
-After dogfooding stabilizes the signals, consider:
+Version `0.6.0` adds stable annotation grouping, deterministic error-first
+limits, and Action outputs. After dogfooding stabilizes the signals, consider:
 
 - per-rule thresholds for high-volume findings;
-- richer GitHub annotations with stable grouping keys.
 
 ## Later: Broader Coverage and Language Support
 

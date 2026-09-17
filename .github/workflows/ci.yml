@@ -47,6 +47,23 @@ jobs:
         run: python -m pr_test_guard check --base HEAD~1 --format json > /tmp/pr-test-guard-direct.json
 
       - name: Smoke-test reusable Action
+        id: guard
         uses: ./
         with:
           base: HEAD~1
+
+      - name: Validate reusable Action outputs
+        shell: bash
+        env:
+          STATUS: ${{ steps.guard.outputs.status }}
+          FINDINGS_COUNT: ${{ steps.guard.outputs.findings-count }}
+          WARNING_COUNT: ${{ steps.guard.outputs.warning-count }}
+          ERROR_COUNT: ${{ steps.guard.outputs.error-count }}
+          REPORT_PATH: ${{ steps.guard.outputs.report-path }}
+        run: |
+          set -euo pipefail
+          [[ "$STATUS" =~ ^(clean|advisory|failed)$ ]]
+          [[ "$FINDINGS_COUNT" =~ ^[0-9]+$ ]]
+          [[ "$WARNING_COUNT" =~ ^[0-9]+$ ]]
+          [[ "$ERROR_COUNT" =~ ^[0-9]+$ ]]
+          [[ "$REPORT_PATH" == "pr-test-guard-report.json" ]]

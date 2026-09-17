@@ -1,14 +1,14 @@
 <h1 align="center">PR Test Guard</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/release-v0.5.1-brightgreen.svg" alt="release v0.5.1" /> <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+" /> <img src="https://img.shields.io/badge/output-JSON%20%7C%20Markdown-lightgrey.svg" alt="JSON and Markdown output" /> <img src="https://img.shields.io/badge/scope-Python%2Fpytest-yellow.svg" alt="Python pytest scope" /> <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="license MIT" />
+  <img src="https://img.shields.io/badge/release-v0.6.0-brightgreen.svg" alt="release v0.6.0" /> <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+" /> <img src="https://img.shields.io/badge/output-JSON%20%7C%20Markdown-lightgrey.svg" alt="JSON and Markdown output" /> <img src="https://img.shields.io/badge/scope-Python%2Fpytest-yellow.svg" alt="Python pytest scope" /> <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="license MIT" />
 </p>
 
 **Lightweight, rule-based test-quality checks for pull requests.**
 
 PR Test Guard helps reviewers spot PRs that look tested but still carry obvious test-quality risks: missing test changes, uncovered changed code, weak assertions, mismatched tests, or mocks that may replace the behavior under review.
 
-The project is CLI-first and designed to fit naturally into CI. Its default behavior is advisory: surface actionable signals for reviewers, and let each repository decide which rules, if any, should become merge-blocking policy. Version `0.5.1` adds strict configuration validation and a standalone preflight command on top of the source-to-test mappings introduced in `0.5.0`.
+The project is CLI-first and designed to fit naturally into CI. Its default behavior is advisory: surface actionable signals for reviewers, and let each repository decide which rules, if any, should become merge-blocking policy. Version `0.6.0` adds bounded, consistently grouped GitHub annotations and reusable Action outputs for downstream workflow steps.
 
 | | |
 | --- | --- |
@@ -91,6 +91,11 @@ related_tests:
     - source: "src/payments/**"
       tests:
         - "tests/integration/payments/**"
+
+github:
+  annotations:
+    max_total: 50
+    max_per_rule: 10
 ```
 
 Validate configuration without requiring a Git repository or PR diff:
@@ -100,10 +105,17 @@ pr-test-guard validate-config
 pr-test-guard validate-config --config config/pr-test-guard.yml --format json
 ```
 
-Version `0.5.1` rejects unknown fields, ambiguous rule objects, empty path
+Configuration validation rejects unknown fields, ambiguous rule objects, empty path
 patterns, and invalid integer values instead of silently ignoring them. Errors
 include the full field path and suggest a nearby supported name when possible.
 The JSON form prints the normalized effective configuration for automation.
+
+GitHub annotations use a stable `PR Test Guard / PTGxxx` title and are bounded
+to 50 total annotations and 10 per rule by default. Error-level findings are
+selected before warnings, followed by stable rule, path, and line ordering.
+Set either annotation limit to `0` to disable that annotation scope. GitHub
+Summary tables and JSON output retain every policy-filtered finding even when
+the annotation stream is limited.
 
 Rule actions are `off`, `warn`, or `error`. `off` suppresses matching findings, `warn` keeps the default advisory behavior, and `error` makes `pr-test-guard check` exit `1` when that rule triggers. `policy.fail_on` accepts rule ids that should be treated as error-level without repeating them under `rules`.
 
@@ -143,7 +155,8 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: tigerless-labs/pr-test-guard@v0.5.1
+      - uses: tigerless-labs/pr-test-guard@v0.6.0
+        id: guard
         with:
           base: origin/${{ github.base_ref }}
           config: .pr-test-guard.yml
@@ -152,7 +165,7 @@ jobs:
 Coverage and deep probes are opt-in Action inputs. Deep mode assumes the workflow has already installed the target repository's own test dependencies and that the configured test command passes before PR Test Guard runs:
 
 ```yaml
-      - uses: tigerless-labs/pr-test-guard@v0.5.1
+      - uses: tigerless-labs/pr-test-guard@v0.6.0
         with:
           base: origin/${{ github.base_ref }}
           coverage: coverage.xml
@@ -165,12 +178,24 @@ Coverage and deep probes are opt-in Action inputs. Deep mode assumes the workflo
 The Action can also write and optionally upload a structured JSON report:
 
 ```yaml
-      - uses: tigerless-labs/pr-test-guard@v0.5.1
+      - uses: tigerless-labs/pr-test-guard@v0.6.0
         with:
           base: origin/${{ github.base_ref }}
           json-output: pr-test-guard-report.json
           upload-artifact: "true"
           artifact-name: pr-test-guard-report
+```
+
+The Action exposes `status`, `findings-count`, `warning-count`, `error-count`,
+and `report-path` outputs. `status` is `clean`, `advisory`, `failed`, or
+`operational-error`:
+
+```yaml
+      - name: Follow up on advisory findings
+        if: always() && steps.guard.outputs.status == 'advisory'
+        env:
+          FINDINGS: ${{ steps.guard.outputs.findings-count }}
+        run: echo "$FINDINGS test-quality finding(s) need review"
 ```
 
 The existing regression-fixture commands remain available for development of PR Test Guard itself. Install the development extras first:
@@ -261,7 +286,7 @@ current Git repository + base ref + optional coverage/test command
 
 The older normalized bundle under `examples/real-pr-bundles/` remains as a development fixture and compatibility prototype for richer CI artifacts. It can include PR metadata, a diff, CI/test results, coverage, and optional change-intent context, but it is not required by the direct checker. See [Real PR Input](docs/real-pr-input.md).
 
-The reusable `action.yml` calls the same CLI/core. There is no separate hosted analysis service and no API key is required for the default path. GitHub output is grouped by rule, includes related-test candidates up to the configured limit, emits error annotations for rules configured as error-level policy, and can retain the full JSON report as a workflow artifact.
+The reusable `action.yml` calls the same CLI/core. There is no separate hosted analysis service and no API key is required for the default path. GitHub output is grouped by stable rule titles, emits a bounded and correctly escaped annotation stream, includes complete finding tables in the job summary, exposes result counts as Action outputs, and can retain the full JSON report as a workflow artifact.
 
 ## Mock and Probe Boundaries
 
@@ -316,11 +341,11 @@ Patch-coverage tools answer whether changed lines were executed. PR Test Guard k
 - [Rule Fixtures](docs/rule-fixtures.md): how controlled fixtures define expected rule behavior for regression testing.
 - [Validation Strategy](docs/validation-strategy.md): how to validate rule usefulness, false positives, and real-world behavior.
 - [Runner Artifacts](docs/runner-artifacts.md): what the current regression-fixture runner emits.
-- [Roadmap](docs/roadmap.md): the lightweight CLI and GitHub Action path from the current `0.5.1` release.
+- [Roadmap](docs/roadmap.md): the lightweight CLI and GitHub Action path from the current `0.6.0` release.
 
 ## Current Scope
 
-Version `0.5.1` supports direct Python/pytest PR analysis from the current Git repository, strict standalone configuration validation, and a reusable advisory GitHub Action. The direct checker currently surfaces:
+Version `0.6.0` supports direct Python/pytest PR analysis from the current Git repository, strict standalone configuration validation, bounded GitHub annotations, and composable outputs from the reusable advisory GitHub Action. The direct checker currently surfaces:
 
 - production-code changes with no test-file change;
 - uncovered changed Python lines when a coverage XML report is supplied;

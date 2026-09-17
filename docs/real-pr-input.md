@@ -77,6 +77,11 @@ related_tests:
     - source: "src/payments/**"
       tests:
         - "tests/integration/payments/**"
+
+github:
+  annotations:
+    max_total: 50
+    max_per_rule: 10
 ```
 
 Use `--config path/to/config.yml` to pass an explicit file, `--no-config` to run with the default advisory policy, and `--fail-on PTG006,PTG005` for a one-off CI override.
@@ -113,6 +118,14 @@ and tagged with `configured_path_mapping`. It does not prove test execution or
 change PTG001's definition of a test-file change. Test excludes still take
 precedence over mapping matches.
 
+`github.annotations.max_total` and `github.annotations.max_per_rule` bound only
+the workflow-command annotation stream. Both default to `50` and `10`
+respectively and accept non-negative integers. Error findings are selected
+first, then findings are ordered deterministically by rule, path, and line.
+GitHub Summary tables and JSON reports remain complete; the summary reports how
+many annotations were omitted by each rule. A zero limit disables the
+corresponding annotation scope without suppressing findings.
+
 ## What the Direct Checker Reads
 
 The current Python/pytest path uses:
@@ -143,17 +156,21 @@ The root `action.yml` wraps the same CLI/core. A consumer repository checks out 
   with:
     fetch-depth: 0
 
-- uses: tigerless-labs/pr-test-guard@v0.5.1
+- uses: tigerless-labs/pr-test-guard@v0.6.0
+  id: guard
   with:
     base: origin/${{ github.base_ref }}
 ```
 
-The Action emits GitHub warning annotations and appends a job summary. Findings are advisory by default and do not make the Action fail.
+The Action emits bounded GitHub annotations with stable rule titles and appends
+a complete job summary. Workflow-command properties such as file paths are
+escaped independently from annotation messages. Findings are advisory by
+default and do not make the Action fail.
 
 To use repository policy:
 
 ```yaml
-- uses: tigerless-labs/pr-test-guard@v0.5.1
+- uses: tigerless-labs/pr-test-guard@v0.6.0
   with:
     base: origin/${{ github.base_ref }}
     config: .pr-test-guard.yml
@@ -162,7 +179,7 @@ To use repository policy:
 To enforce a high-confidence rule without a config file:
 
 ```yaml
-- uses: tigerless-labs/pr-test-guard@v0.5.1
+- uses: tigerless-labs/pr-test-guard@v0.6.0
   with:
     base: origin/${{ github.base_ref }}
     fail-on: PTG006
@@ -173,7 +190,7 @@ Rules configured as `error` emit GitHub error annotations and make the Action fa
 The Action also supports JSON report artifacts:
 
 ```yaml
-- uses: tigerless-labs/pr-test-guard@v0.5.1
+- uses: tigerless-labs/pr-test-guard@v0.6.0
   with:
     base: origin/${{ github.base_ref }}
     json-output: pr-test-guard-report.json
@@ -183,6 +200,25 @@ The Action also supports JSON report artifacts:
 
 The Action records the checker exit code, writes the JSON report, uploads it when
 requested, and only then fails the job for configured error-level findings.
+
+The composite Action exposes these outputs from the final policy-filtered
+result:
+
+- `status`: `clean`, `advisory`, `failed`, or `operational-error`;
+- `findings-count`: total retained findings;
+- `warning-count`: warning findings;
+- `error-count`: error findings;
+- `report-path`: configured JSON report path, or an empty string when disabled.
+
+For example:
+
+```yaml
+- name: Record advisory finding count
+  if: always() && steps.guard.outputs.status == 'advisory'
+  env:
+    FINDINGS: ${{ steps.guard.outputs.findings-count }}
+  run: echo "$FINDINGS finding(s) need reviewer attention"
+```
 
 ## Deep Probe Boundary
 
