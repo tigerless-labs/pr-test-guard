@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import importlib
+import json
 import sys
 from pathlib import Path
 
@@ -105,6 +106,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="optional path to also write the full JSON analysis result",
     )
 
+    validate_config = subcommands.add_parser(
+        "validate-config",
+        help="validate and print the effective PR Test Guard configuration",
+    )
+    validate_config.add_argument(
+        "--config",
+        default=None,
+        help="optional path to .pr-test-guard.yml, .json, or .toml config",
+    )
+    validate_config.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="output format (default: text)",
+    )
+
     validate_cases = subcommands.add_parser(
         "validate-cases",
         help="validate regression fixture structure and optionally run patched fixtures",
@@ -190,6 +207,24 @@ def run_check(parsed: argparse.Namespace) -> int:
     return exit_code_for(result)
 
 
+def run_validate_config(parsed: argparse.Namespace) -> int:
+    try:
+        config = load_config(Path.cwd(), explicit_path=parsed.config)
+    except CheckError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+
+    rendered = json.dumps(config.to_dict(), indent=2, sort_keys=True) + "\n"
+    if parsed.format == "json":
+        sys.stdout.write(rendered)
+    else:
+        source = config.source or "built-in defaults (no config file found)"
+        print(f"Configuration valid: {source}")
+        print("Effective configuration:")
+        sys.stdout.write(rendered)
+    return 0
+
+
 def write_json_output(path: Path, content: str) -> None:
     try:
         if path.parent != Path("."):
@@ -210,6 +245,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if parsed.command == "check":
         return run_check(parsed)
+
+    if parsed.command == "validate-config":
+        return run_validate_config(parsed)
 
     if parsed.command == "validate-cases":
         script_args = ["--cases-root", parsed.cases_root]

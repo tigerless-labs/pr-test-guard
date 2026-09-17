@@ -81,6 +81,21 @@ related_tests:
 
 Use `--config path/to/config.yml` to pass an explicit file, `--no-config` to run with the default advisory policy, and `--fail-on PTG006,PTG005` for a one-off CI override.
 
+Validate and inspect the normalized effective configuration without analyzing a
+PR diff:
+
+```bash
+pr-test-guard validate-config
+pr-test-guard validate-config --config path/to/config.yml --format json
+```
+
+The validator can run outside a Git repository. With no explicit path it uses
+the same `.pr-test-guard.*` discovery order as `check`; if no file is found, it
+reports the built-in defaults. Invalid configuration exits `2`. Unknown fields,
+ambiguous rule objects, empty path patterns, and booleans supplied where an
+integer is required are rejected with a field-specific error. Nearby supported
+field names are suggested when possible.
+
 Rule actions, `policy.fail_on`, and `paths.ignore` are applied after detection:
 they control which findings are shown and whether the command exits `1` without
 making heuristic rules more certain. Test path configuration participates in
@@ -128,7 +143,7 @@ The root `action.yml` wraps the same CLI/core. A consumer repository checks out 
   with:
     fetch-depth: 0
 
-- uses: tigerless-labs/pr-test-guard@v0.5.0
+- uses: tigerless-labs/pr-test-guard@v0.5.1
   with:
     base: origin/${{ github.base_ref }}
 ```
@@ -138,7 +153,7 @@ The Action emits GitHub warning annotations and appends a job summary. Findings 
 To use repository policy:
 
 ```yaml
-- uses: tigerless-labs/pr-test-guard@v0.5.0
+- uses: tigerless-labs/pr-test-guard@v0.5.1
   with:
     base: origin/${{ github.base_ref }}
     config: .pr-test-guard.yml
@@ -147,7 +162,7 @@ To use repository policy:
 To enforce a high-confidence rule without a config file:
 
 ```yaml
-- uses: tigerless-labs/pr-test-guard@v0.5.0
+- uses: tigerless-labs/pr-test-guard@v0.5.1
   with:
     base: origin/${{ github.base_ref }}
     fail-on: PTG006
@@ -158,7 +173,7 @@ Rules configured as `error` emit GitHub error annotations and make the Action fa
 The Action also supports JSON report artifacts:
 
 ```yaml
-- uses: tigerless-labs/pr-test-guard@v0.5.0
+- uses: tigerless-labs/pr-test-guard@v0.5.1
   with:
     base: origin/${{ github.base_ref }}
     json-output: pr-test-guard-report.json
