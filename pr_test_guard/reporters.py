@@ -7,6 +7,10 @@ import os
 from pathlib import Path
 
 from .check import AnalysisResult
+from .config import (
+    DEFAULT_GITHUB_ANNOTATION_MAX_PER_RULE,
+    DEFAULT_GITHUB_ANNOTATION_MAX_TOTAL,
+)
 from .finding import Finding
 
 
@@ -73,33 +77,54 @@ def render_json(result: AnalysisResult) -> str:
     return json.dumps(result.to_dict(), indent=2, sort_keys=True) + "\n"
 
 
-def _escape_workflow_value(value: str) -> str:
+def _escape_workflow_message(value: str) -> str:
     return value.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
 
 
+def _escape_workflow_property(value: str) -> str:
+    return _escape_workflow_message(value).replace(":", "%3A").replace(",", "%2C")
+
+
 def _annotation(item: Finding) -> str:
-    attrs = []
+    attrs = [f"title={_escape_workflow_property(f'PR Test Guard / {item.rule_id}')}"]
     if item.file:
-        attrs.append(f"file={_escape_workflow_value(item.file)}")
-    if item.line:
+        attrs.append(f"file={_escape_workflow_property(item.file)}")
+    if item.file and item.line:
         attrs.append(f"line={item.line}")
-    metadata = f" {','.join(attrs)}" if attrs else ""
+    metadata = f" {','.join(attrs)}"
     message = f"[{item.rule_id}] {item.message}"
     if item.evidence:
         message += f" Evidence: {item.evidence}"
     command = "error" if item.severity == "error" else "warning"
-    return f"::{command}{metadata}::{_escape_workflow_value(message)}"
+    return f"::{command}{metadata}::{_escape_workflow_message(message)}"
 
 
 def github_summary(result: AnalysisResult) -> str:
+    selected_annotations, omitted_annotations = _select_github_annotations(result)
+    omitted_total = sum(omitted_annotations.values())
     lines = [
         "## PR Test Guard",
         "",
         f"**{len(result.findings)} review signal(s)** found between `{result.base}` and `HEAD`.",
         f"**{len(result.related_tests)} related test candidate(s)** identified from deterministic or configured path context.",
         f"**Policy:** {_policy_label(result)}.",
+        (
+            f"**Annotations:** {len(selected_annotations)} emitted, "
+            f"{omitted_total} omitted by configured limits."
+        ),
         "",
     ]
+    if omitted_annotations:
+        omitted_by_rule = ", ".join(
+            f"{rule_id}={count}" for rule_id, count in sorted(omitted_annotations.items())
+        )
+        lines.extend(
+            [
+                f"> Annotation stream limited; omitted findings by rule: {omitted_by_rule}. "
+                "The tables and JSON report retain every finding.",
+                "",
+            ]
+        )
     if result.findings:
         for rule_id, items in _findings_by_rule(result.findings):
             lines.append(f"### {rule_id} ({_severity_counts(items)})")
@@ -147,13 +172,80 @@ def github_summary(result: AnalysisResult) -> str:
 
 
 def emit_github(result: AnalysisResult) -> str:
-    output_lines = [_annotation(item) for item in result.findings]
-    status = "failed policy" if any(item.severity == "error" for item in result.findings) else "advisory result"
-    output_lines.append(f"PR Test Guard: {len(result.findings)} review signal(s); {status}.")
+    selected, omitted = _select_github_annotations(result)
+    output_lines = [_annotation(item) for item in selected]
+    status = _github_status(result)
+    omitted_total = sum(omitted.values())
+    output_lines.append(
+        f"PR Test Guard: {len(result.findings)} review signal(s); "
+        f"{len(selected)} annotation(s) emitted; {omitted_total} omitted; {status}."
+    )
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
         Path(summary_path).open("a", encoding="utf-8").write(github_summary(result))
+    output_path = os.environ.get("GITHUB_OUTPUT")
+    if output_path:
+        errors = sum(1 for item in result.findings if item.severity == "error")
+        warnings = len(result.findings) - errors
+        with Path(output_path).open("a", encoding="utf-8") as handle:
+            handle.write(f"status={status}\n")
+            handle.write(f"findings-count={len(result.findings)}\n")
+            handle.write(f"warning-count={warnings}\n")
+            handle.write(f"error-count={errors}\n")
     return "\n".join(output_lines) + "\n"
+
+
+def _github_status(result: AnalysisResult) -> str:
+    if any(item.severity == "error" for item in result.findings):
+        return "failed"
+    if result.findings:
+        return "advisory"
+    return "clean"
+
+
+def _select_github_annotations(
+    result: AnalysisResult,
+) -> tuple[list[Finding], dict[str, int]]:
+    max_total, max_per_rule = _github_annotation_limits(result)
+    ordered = sorted(
+        enumerate(result.findings),
+        key=lambda entry: (
+            0 if entry[1].severity == "error" else 1,
+            entry[1].rule_id,
+            entry[1].file or "",
+            entry[1].line if entry[1].line is not None else -1,
+            entry[0],
+        ),
+    )
+    selected: list[Finding] = []
+    selected_by_rule: dict[str, int] = {}
+    omitted_by_rule: dict[str, int] = {}
+    for _, finding in ordered:
+        rule_count = selected_by_rule.get(finding.rule_id, 0)
+        if len(selected) >= max_total or rule_count >= max_per_rule:
+            omitted_by_rule[finding.rule_id] = omitted_by_rule.get(finding.rule_id, 0) + 1
+            continue
+        selected.append(finding)
+        selected_by_rule[finding.rule_id] = rule_count + 1
+    return selected, omitted_by_rule
+
+
+def _github_annotation_limits(result: AnalysisResult) -> tuple[int, int]:
+    if not result.policy:
+        return DEFAULT_GITHUB_ANNOTATION_MAX_TOTAL, DEFAULT_GITHUB_ANNOTATION_MAX_PER_RULE
+    github = result.policy.get("github")
+    if not isinstance(github, dict):
+        return DEFAULT_GITHUB_ANNOTATION_MAX_TOTAL, DEFAULT_GITHUB_ANNOTATION_MAX_PER_RULE
+    annotations = github.get("annotations")
+    if not isinstance(annotations, dict):
+        return DEFAULT_GITHUB_ANNOTATION_MAX_TOTAL, DEFAULT_GITHUB_ANNOTATION_MAX_PER_RULE
+    max_total = annotations.get("max_total", DEFAULT_GITHUB_ANNOTATION_MAX_TOTAL)
+    max_per_rule = annotations.get("max_per_rule", DEFAULT_GITHUB_ANNOTATION_MAX_PER_RULE)
+    if isinstance(max_total, bool) or not isinstance(max_total, int) or max_total < 0:
+        max_total = DEFAULT_GITHUB_ANNOTATION_MAX_TOTAL
+    if isinstance(max_per_rule, bool) or not isinstance(max_per_rule, int) or max_per_rule < 0:
+        max_per_rule = DEFAULT_GITHUB_ANNOTATION_MAX_PER_RULE
+    return max_total, max_per_rule
 
 
 def _findings_by_rule(findings: list[Finding]) -> list[tuple[str, list[Finding]]]:

@@ -48,6 +48,23 @@ inputs:
     required: false
     default: "3.11"
 
+outputs:
+  status:
+    description: clean, advisory, failed, or operational-error.
+    value: ${{ steps.check.outputs.status }}
+  findings-count:
+    description: Total number of findings retained after policy filtering.
+    value: ${{ steps.check.outputs.findings-count }}
+  warning-count:
+    description: Number of warning-level findings.
+    value: ${{ steps.check.outputs.warning-count }}
+  error-count:
+    description: Number of error-level findings.
+    value: ${{ steps.check.outputs.error-count }}
+  report-path:
+    description: Configured JSON report path, or an empty string when disabled.
+    value: ${{ steps.check.outputs.report-path }}
+
 runs:
   using: composite
   steps:
@@ -120,7 +137,10 @@ runs:
         if [[ "$INPUT_DEEP" == "true" ]]; then
           if [[ -z "$INPUT_TEST_COMMAND" ]]; then
             echo "deep=true requires test-command." >&2
-            exit 2
+            echo "status=operational-error" >> "$GITHUB_OUTPUT"
+            echo "exit-code=2" >> "$GITHUB_OUTPUT"
+            echo "report-path=$INPUT_JSON_OUTPUT" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           args+=(--deep --test-command "$INPUT_TEST_COMMAND" --max-probes "$INPUT_MAX_PROBES")
         fi
@@ -129,7 +149,11 @@ runs:
         pr-test-guard "${args[@]}"
         status=$?
         set -e
+        if [[ "$status" -eq 2 ]]; then
+          echo "status=operational-error" >> "$GITHUB_OUTPUT"
+        fi
         echo "exit-code=$status" >> "$GITHUB_OUTPUT"
+        echo "report-path=$INPUT_JSON_OUTPUT" >> "$GITHUB_OUTPUT"
 
     - name: Upload PR Test Guard JSON report
       if: ${{ inputs.upload-artifact == 'true' }}

@@ -23,7 +23,9 @@ DEFAULT_CONFIG_NAMES = (
     ".pr-test-guard.json",
     ".pr-test-guard.toml",
 )
-TOP_LEVEL_FIELDS = ("rules", "policy", "paths", "related_tests")
+TOP_LEVEL_FIELDS = ("rules", "policy", "paths", "related_tests", "github")
+DEFAULT_GITHUB_ANNOTATION_MAX_TOTAL = 50
+DEFAULT_GITHUB_ANNOTATION_MAX_PER_RULE = 10
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,6 +38,8 @@ class GuardConfig:
     test_path_exclude: tuple[str, ...] = ()
     related_test_max_candidates: int = 5
     related_test_mappings: tuple[RelatedTestMapping, ...] = ()
+    github_annotation_max_total: int = DEFAULT_GITHUB_ANNOTATION_MAX_TOTAL
+    github_annotation_max_per_rule: int = DEFAULT_GITHUB_ANNOTATION_MAX_PER_RULE
 
     def action_for(self, rule_id: str) -> str:
         action = self.rule_actions.get(rule_id, "warn")
@@ -61,6 +65,12 @@ class GuardConfig:
                     {"source": mapping.source, "tests": list(mapping.tests)}
                     for mapping in self.related_test_mappings
                 ],
+            },
+            "github": {
+                "annotations": {
+                    "max_total": self.github_annotation_max_total,
+                    "max_per_rule": self.github_annotation_max_per_rule,
+                },
             },
         }
 
@@ -93,6 +103,8 @@ def config_from_overrides(config: GuardConfig, *, fail_on: str | None = None) ->
         test_path_exclude=config.test_path_exclude,
         related_test_max_candidates=config.related_test_max_candidates,
         related_test_mappings=config.related_test_mappings,
+        github_annotation_max_total=config.github_annotation_max_total,
+        github_annotation_max_per_rule=config.github_annotation_max_per_rule,
     )
 
 
@@ -164,10 +176,37 @@ def parse_config(raw: Any, *, source: str | None = None) -> GuardConfig:
         field_name="related_tests",
         allowed=("max_candidates", "mappings"),
     )
-    max_candidates = related_tests.get("max_candidates", 5)
-    if isinstance(max_candidates, bool) or not isinstance(max_candidates, int) or max_candidates < 0:
-        raise CheckError("config field 'related_tests.max_candidates' must be a non-negative integer")
+    max_candidates = _parse_non_negative_integer(
+        related_tests.get("max_candidates", 5),
+        field_name="related_tests.max_candidates",
+    )
     related_test_mappings = _parse_related_test_mappings(related_tests.get("mappings", ()))
+
+    github = raw.get("github", {})
+    if github is None:
+        github = {}
+    if not isinstance(github, dict):
+        raise CheckError("config field 'github' must be a mapping")
+    _reject_unknown_fields(github, field_name="github", allowed=("annotations",))
+
+    annotations = github.get("annotations", {})
+    if annotations is None:
+        annotations = {}
+    if not isinstance(annotations, dict):
+        raise CheckError("config field 'github.annotations' must be a mapping")
+    _reject_unknown_fields(
+        annotations,
+        field_name="github.annotations",
+        allowed=("max_total", "max_per_rule"),
+    )
+    github_annotation_max_total = _parse_non_negative_integer(
+        annotations.get("max_total", DEFAULT_GITHUB_ANNOTATION_MAX_TOTAL),
+        field_name="github.annotations.max_total",
+    )
+    github_annotation_max_per_rule = _parse_non_negative_integer(
+        annotations.get("max_per_rule", DEFAULT_GITHUB_ANNOTATION_MAX_PER_RULE),
+        field_name="github.annotations.max_per_rule",
+    )
 
     return GuardConfig(
         source=source,
@@ -178,6 +217,8 @@ def parse_config(raw: Any, *, source: str | None = None) -> GuardConfig:
         test_path_exclude=test_path_exclude,
         related_test_max_candidates=max_candidates,
         related_test_mappings=related_test_mappings,
+        github_annotation_max_total=github_annotation_max_total,
+        github_annotation_max_per_rule=github_annotation_max_per_rule,
     )
 
 
@@ -240,6 +281,12 @@ def _parse_rule_list(value: Any, *, field_name: str) -> tuple[str, ...]:
     else:
         raise CheckError(f"{field_name} must be a list or comma-separated string")
     return tuple(_normalize_rule_id(str(item), field_name=field_name) for item in items)
+
+
+def _parse_non_negative_integer(value: Any, *, field_name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise CheckError(f"config field '{field_name}' must be a non-negative integer")
+    return value
 
 
 def _parse_string_list(value: Any, *, field_name: str) -> tuple[str, ...]:
