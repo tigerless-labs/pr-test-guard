@@ -2,9 +2,9 @@
 
 PR Test Guard is a lightweight PR test-quality tool: run fast checks on a pull-request diff, explain what triggered, and fit naturally into local CLI and CI workflows.
 
-Version `0.6.0` builds on the first public-ready Python/pytest path with bounded, stably grouped GitHub annotations and reusable Action outputs. Repositories can keep workflow noise controlled without losing findings from the GitHub Summary or JSON report, and downstream steps can consume policy-filtered result counts directly.
+Version `0.7.0` adds changed-function evidence, bounded assertion-result flow, and compatible base-behavior rollback probes to the Python/pytest path.
 
-## What Exists in 0.6.0
+## What Exists in 0.7.0
 
 - `pr-test-guard` / `python -m pr_test_guard` entrypoints;
 - `pr-test-guard check --base <base-ref>` for repository-native PR analysis;
@@ -13,6 +13,9 @@ Version `0.6.0` builds on the first public-ready Python/pytest path with bounded
 - deterministic related-test context for changed Python symbols;
 - explicit Python mock-boundary candidates on changed symbols and unconstrained changed dependency mocks;
 - opt-in AST-scoped bounded targeted probes in an isolated Git worktree;
+- one evidence unit per changed Python function or method;
+- local result-to-assertion flow for direct changed-symbol calls;
+- opt-in compatible function rollback probes in an isolated Git worktree;
 - dogfood-derived sanitized review examples and public-safe distilled PTG005 controls;
 - text, JSON, and GitHub Actions output;
 - `.pr-test-guard.*` configuration for rule `off` / `warn` / `error`, ignored paths, related-test display limits, and one-off `--fail-on` CI policy;
@@ -161,7 +164,7 @@ post-detection finding filter.
 
 ## Current: GitHub Adoption Controls
 
-Version `0.6.0` adds stable annotation grouping, deterministic error-first
+Version `0.7.0` retains stable annotation grouping, deterministic error-first
 limits, and Action outputs. After dogfooding stabilizes the signals, consider:
 
 - per-rule thresholds for high-volume findings;

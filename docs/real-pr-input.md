@@ -137,7 +137,7 @@ The current Python/pytest path uses:
 - related-test candidates from deterministic imports, direct calls, test names, mock targets, and optional configured path mappings;
 - tracked Python tests for symbol-resolved mock targets and bounded changed-call relationships;
 - optional `coverage.py` XML;
-- optional explicit test command for bounded targeted probes.
+- optional explicit test command for bounded mutation and base-behavior rollback probes.
 - optional `.pr-test-guard.*` test-path, related-test mapping, and policy configuration.
 - optional JSON report output path for CI artifacts or follow-up analysis.
 
@@ -156,7 +156,7 @@ The root `action.yml` wraps the same CLI/core. A consumer repository checks out 
   with:
     fetch-depth: 0
 
-- uses: tigerless-labs/pr-test-guard@v0.6.0
+- uses: tigerless-labs/pr-test-guard@v0.7.0
   id: guard
   with:
     base: origin/${{ github.base_ref }}
@@ -170,7 +170,7 @@ default and do not make the Action fail.
 To use repository policy:
 
 ```yaml
-- uses: tigerless-labs/pr-test-guard@v0.6.0
+- uses: tigerless-labs/pr-test-guard@v0.7.0
   with:
     base: origin/${{ github.base_ref }}
     config: .pr-test-guard.yml
@@ -179,7 +179,7 @@ To use repository policy:
 To enforce a high-confidence rule without a config file:
 
 ```yaml
-- uses: tigerless-labs/pr-test-guard@v0.6.0
+- uses: tigerless-labs/pr-test-guard@v0.7.0
   with:
     base: origin/${{ github.base_ref }}
     fail-on: PTG006
@@ -190,7 +190,7 @@ Rules configured as `error` emit GitHub error annotations and make the Action fa
 The Action also supports JSON report artifacts:
 
 ```yaml
-- uses: tigerless-labs/pr-test-guard@v0.6.0
+- uses: tigerless-labs/pr-test-guard@v0.7.0
   with:
     base: origin/${{ github.base_ref }}
     json-output: pr-test-guard-report.json
@@ -222,7 +222,7 @@ For example:
 
 ## Deep Probe Boundary
 
-`--deep` is opt-in because it executes the repository's configured test command. PR Test Guard first creates an isolated Git worktree at `HEAD`, verifies that the unmodified test command passes, and only then applies a bounded number of supported probes.
+`--deep` is opt-in because it executes the repository's configured test command. PR Test Guard creates isolated Git worktrees at `HEAD`, verifies that the unmodified test command passes, and only then applies a bounded number of supported mutation and rollback probes. `--max-probes` limits each probe family separately.
 
 This is intentionally different from a full mutation-testing campaign: the probe set is small, scoped to changed Python lines, and used as reviewer evidence rather than as a repository-wide mutation score. Killed probes are treated as useful test sensitivity and do not produce PTG006 warnings. Unsupported probe shapes are skipped rather than guessed.
 

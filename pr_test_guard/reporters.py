@@ -32,6 +32,7 @@ def render_text(result: AnalysisResult) -> str:
         "─────────────",
         f"Base: {result.base}",
         f"Changed files: {len(result.files)} ({production} Python production, {tests} test)",
+        f"Changed behavior units: {len(result.change_units)}",
         f"Related test candidates: {len(result.related_tests)}",
         f"Policy: {_policy_label(result)}",
         "",
@@ -106,6 +107,7 @@ def github_summary(result: AnalysisResult) -> str:
         "## PR Test Guard",
         "",
         f"**{len(result.findings)} review signal(s)** found between `{result.base}` and `HEAD`.",
+        f"**{len(result.change_units)} changed behavior unit(s)** identified.",
         f"**{len(result.related_tests)} related test candidate(s)** identified from deterministic or configured path context.",
         f"**Policy:** {_policy_label(result)}.",
         (

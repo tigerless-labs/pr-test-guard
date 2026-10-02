@@ -153,6 +153,9 @@ def test_validate_config_prints_normalized_json(tmp_path: Path, monkeypatch, cap
     payload = json.loads(capsys.readouterr().out)
     assert payload["rules"]["PTG001"] == "error"
     assert payload["rules"]["PTG006"] == "warn"
+    assert payload["rules"]["PTG007"] == "warn"
+    assert payload["rules"]["PTG008"] == "warn"
+    assert payload["rules"]["PTG009"] == "warn"
     assert payload["related_tests"]["max_candidates"] == 2
     assert payload["github"]["annotations"] == {"max_per_rule": 10, "max_total": 50}
     assert payload["source"] == str(tmp_path / "guard.yml")

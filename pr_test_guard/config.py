@@ -15,7 +15,17 @@ from .check import CheckError
 from .paths import RelatedTestMapping
 
 
-RULE_IDS = ("PTG001", "PTG002", "PTG003", "PTG004", "PTG005", "PTG006")
+RULE_IDS = (
+    "PTG001",
+    "PTG002",
+    "PTG003",
+    "PTG004",
+    "PTG005",
+    "PTG006",
+    "PTG007",
+    "PTG008",
+    "PTG009",
+)
 RULE_ACTIONS = ("off", "warn", "error")
 DEFAULT_CONFIG_NAMES = (
     ".pr-test-guard.yml",
