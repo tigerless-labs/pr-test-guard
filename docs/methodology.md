@@ -89,15 +89,39 @@ A mock candidate should tell a reviewer where to look; it should not automatical
 
 The constrained dependency check is deliberately narrow. It looks for inspectable test evidence such as `assert_called_once_with`, `assert_called_with`, `call_args` / `call_count` assertions, non-weak assertions over the changed owner result, or `pytest.raises` around the owner call. It does not infer full business intent or decide that a mock is inherently appropriate.
 
+### Changed-behavior and assertion-flow evidence
+
+The checker records one evidence unit for each changed Python function or
+method. A unit distinguishes broad related-test candidates from tests that
+directly call the changed symbol, tests that replace it with a mock, and direct
+calls whose values reach meaningful assertions. This prevents a test change for
+one function from hiding a separate changed function with no direct evidence.
+Direct evidence propagates through resolvable calls between changed module
+functions, imported functions, and `self`/`cls` methods so internal helpers can
+inherit evidence from a tested public entrypoint. Dynamic dispatch is not
+guessed.
+
+Assertion flow is deliberately intraprocedural. It follows a direct changed
+symbol call through local assignments, attributes, and subscripts. It recognizes
+comparisons and negated conditions, while treating existence checks,
+self-comparisons, and unobserved results as insufficient. Fixtures, helper-call
+summaries, dynamic dispatch, and business-intent correctness remain unknown.
+
 ### Counterfactual evidence
 
 The direct checker can execute a small set of deterministic behavior weakenings against changed Python lines. This path is opt-in through `--deep`, requires an explicit test command, and runs in an isolated Git worktree. Surviving probes can strengthen a test-quality warning.
 
 This is a bounded PR-scoped signal, not a full mutation-testing campaign or repository-wide mutation score. A generated probe is only a candidate. If the baseline test command fails, PTG006 is skipped. If the configured tests kill the probe, no warning is emitted. Unsupported shapes such as response constructors, symbolic HTTP status constants, and unstable multi-line rewrites remain quiet by design.
 
+Deep mode also supports function-level rollback probes. When the base and PR
+versions contain the same function signature and deterministic direct-call test
+evidence exists, the checker restores the base implementation while retaining
+the PR's tests. A passing rollback produces PTG009. Collection, import, or syntax
+failures are inconclusive; an ordinary failing test kills the rollback.
+
 ## Finding Model
 
-The direct checker uses six stable rule ids for the current Python/pytest scope:
+The direct checker uses nine stable rule ids for the current Python/pytest scope:
 
 - `PTG001` — production code changed with no test-file change;
 - `PTG002` — changed Python line uncovered in a supplied coverage XML;
@@ -105,6 +129,9 @@ The direct checker uses six stable rule ids for the current Python/pytest scope:
 - `PTG004` — suspicious test deletion, skip/xfail, or assertion removal;
 - `PTG005` — a mock directly replaces a changed Python symbol, or a changed test mocks an unconstrained internal dependency called on a changed production line;
 - `PTG006` — bounded targeted probe survives the configured tests.
+- `PTG007` — changed function or method has no deterministic direct or static call-path test evidence;
+- `PTG008` — direct changed-symbol result does not reach a meaningful assertion;
+- `PTG009` — compatible base-version function still passes the PR tests.
 
 Each result includes a rule id, severity, file/line where available, a short message, and evidence text. Severity defaults to `warning`; `.pr-test-guard.yml` or `--fail-on` can promote selected rules to `error` or suppress them with `off`. The direct checker also emits related-test candidates as JSON context and a short text/GitHub summary. The older fixture runner retains its research-prototype labels only so existing regression fixtures remain stable during the transition.
 
@@ -124,6 +151,6 @@ CI integration should be advisory by default. Repositories can opt into stricter
 
 ## Current Limits
 
-Version `0.6.0` provides a repository-native `check` command, strict standalone configuration validation, bounded and stably grouped GitHub annotations, reusable Action outputs, configurable test-path recognition and rule policy, JSON report artifacts, dogfooding review-draft helpers, deterministic related-test context, additive source-to-test path mappings, AST-scoped targeted probes, and PTG005 constrained dependency-mock suppression for the current Python/pytest scope. Annotation limits affect only delivery noise: the job summary and JSON report retain the complete policy-filtered result. The checker is intentionally conservative: it does not infer full PR correctness, automatically discover every project's test command, or treat heuristic signals as merge-blocking failures unless the repository explicitly configures that policy.
+Version `0.7.0` provides a repository-native `check` command, strict standalone configuration validation, bounded and stably grouped GitHub annotations, reusable Action outputs, configurable test-path recognition and rule policy, JSON report artifacts, dogfooding review-draft helpers, deterministic related-test context, additive source-to-test path mappings, changed-function evidence, bounded assertion-result flow, AST-scoped targeted probes, function rollback probes, and PTG005 constrained dependency-mock suppression for the current Python/pytest scope. Annotation limits affect only delivery noise: the job summary and JSON report retain the complete policy-filtered result. The checker is intentionally conservative: it does not infer full PR correctness, automatically discover every project's test command, or treat heuristic signals as merge-blocking failures unless the repository explicitly configures that policy.
 
 The immediate engineering goal is real-PR dogfooding and false-positive reduction. Controlled fixtures remain regression tests for the tool rather than a public benchmark.

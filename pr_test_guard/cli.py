@@ -81,7 +81,7 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument(
         "--deep",
         action="store_true",
-        help="enable bounded targeted probes in an isolated git worktree",
+        help="enable bounded mutation and base-behavior rollback probes in isolated git worktrees",
     )
     check.add_argument(
         "--test-command",
@@ -92,7 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-probes",
         type=int,
         default=3,
-        help="maximum targeted probes to run in deep mode (default: 3)",
+        help="maximum probes to run per deep-probe family (default: 3)",
     )
     check.add_argument(
         "--format",

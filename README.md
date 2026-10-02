@@ -1,14 +1,14 @@
 <h1 align="center">PR Test Guard</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/release-v0.6.0-brightgreen.svg" alt="release v0.6.0" /> <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+" /> <img src="https://img.shields.io/badge/output-JSON%20%7C%20Markdown-lightgrey.svg" alt="JSON and Markdown output" /> <img src="https://img.shields.io/badge/scope-Python%2Fpytest-yellow.svg" alt="Python pytest scope" /> <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="license MIT" />
+  <img src="https://img.shields.io/badge/release-v0.7.0-brightgreen.svg" alt="release v0.7.0" /> <img src="https://img.shields.io/badge/python-3.11%2B-blue.svg" alt="Python 3.11+" /> <img src="https://img.shields.io/badge/output-JSON%20%7C%20Markdown-lightgrey.svg" alt="JSON and Markdown output" /> <img src="https://img.shields.io/badge/scope-Python%2Fpytest-yellow.svg" alt="Python pytest scope" /> <img src="https://img.shields.io/badge/license-MIT-yellow.svg" alt="license MIT" />
 </p>
 
 **Lightweight, rule-based test-quality checks for pull requests.**
 
 PR Test Guard helps reviewers spot PRs that look tested but still carry obvious test-quality risks: missing test changes, uncovered changed code, weak assertions, mismatched tests, or mocks that may replace the behavior under review.
 
-The project is CLI-first and designed to fit naturally into CI. Its default behavior is advisory: surface actionable signals for reviewers, and let each repository decide which rules, if any, should become merge-blocking policy. Version `0.6.0` adds bounded, consistently grouped GitHub annotations and reusable Action outputs for downstream workflow steps.
+The project is CLI-first and designed to fit naturally into CI. Its default behavior is advisory: surface actionable signals for reviewers, and let each repository decide which rules, if any, should become merge-blocking policy. Version `0.7.0` adds per-changed-symbol evidence, bounded assertion-result flow, and base-behavior rollback probes.
 
 | | |
 | --- | --- |
@@ -50,7 +50,7 @@ pr-test-guard check \
   --json-output pr-test-guard-report.json
 ```
 
-For the optional deeper check, explicitly provide the project's test command. PR Test Guard creates an isolated Git worktree, runs the unmodified tests once, then applies at most a few bounded probes to changed Python lines:
+For the optional deeper check, explicitly provide the project's test command. PR Test Guard uses isolated Git worktrees, verifies the unmodified tests, then applies a bounded number of mutation and compatible base-behavior rollback probes:
 
 ```bash
 pr-test-guard check \
@@ -155,17 +155,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: tigerless-labs/pr-test-guard@v0.6.0
+      - uses: tigerless-labs/pr-test-guard@v0.7.0
         id: guard
         with:
           base: origin/${{ github.base_ref }}
           config: .pr-test-guard.yml
 ```
 
-Coverage and deep probes are opt-in Action inputs. Deep mode assumes the workflow has already installed the target repository's own test dependencies and that the configured test command passes before PR Test Guard runs:
+Coverage and deep probes are opt-in Action inputs. Deep mode assumes the workflow has already installed the target repository's own test dependencies and that the configured test command passes before PR Test Guard runs. `max-probes` limits each deep-probe family separately:
 
 ```yaml
-      - uses: tigerless-labs/pr-test-guard@v0.6.0
+      - uses: tigerless-labs/pr-test-guard@v0.7.0
         with:
           base: origin/${{ github.base_ref }}
           coverage: coverage.xml
@@ -178,7 +178,7 @@ Coverage and deep probes are opt-in Action inputs. Deep mode assumes the workflo
 The Action can also write and optionally upload a structured JSON report:
 
 ```yaml
-      - uses: tigerless-labs/pr-test-guard@v0.6.0
+      - uses: tigerless-labs/pr-test-guard@v0.7.0
         with:
           base: origin/${{ github.base_ref }}
           json-output: pr-test-guard-report.json
@@ -224,7 +224,7 @@ It currently models evidence that can help answer:
 - **Do mocks or patches appear to replace the behavior under review?**
 - **Can a limited counterfactual change survive the attached tests?**
 
-The direct `check` command currently emits six PR-scoped rule families:
+The direct `check` command currently emits nine PR-scoped rule families:
 
 | Rule | Signal |
 | --- | --- |
@@ -234,6 +234,9 @@ The direct `check` command currently emits six PR-scoped rule families:
 | `PTG004` | A test was deleted, skipped/xfail-marked, or lost assertions. |
 | `PTG005` | A mock directly replaces a changed Python symbol, or a changed test mocks an unconstrained internal dependency called on a changed production line. |
 | `PTG006` | An opt-in bounded targeted probe survives the configured tests. |
+| `PTG007` | A changed Python function or method has no deterministic direct or static call-path test evidence. |
+| `PTG008` | A test directly calls changed behavior, but its result does not reach a meaningful assertion. |
+| `PTG009` | Restoring a compatible base-version function still passes the configured tests. |
 
 These are review-oriented signals. Heuristic findings such as `PTG003` and `PTG005` are advisory by default rather than automatic reasons to block a merge. The older fixture runner retains its research-prototype labels internally so existing regression cases keep working.
 
@@ -306,6 +309,10 @@ The direct checker also reports related-test candidates using deterministic impo
 
 The targeted probe generator is deliberately limited and AST-scoped. It covers a small set of status-code returns, boolean return flips, and comparison-boundary changes on lines added by the current PR while avoiding string/comment matches and unstable multi-line rewrites. A generated probe is not itself a finding: `PTG006` is emitted only when the configured tests pass at baseline and a supported probe survives an actual rerun in an isolated Git worktree.
 
+The change-evidence layer records one unit per changed function or method, including behavior shapes, related tests, direct-call evidence, bounded static call-path evidence, mock replacement, and assertion-flow status. Direct test evidence propagates only through resolvable calls between changed module functions, imported functions, and `self`/`cls` methods. PTG007 remains quiet when PTG005 already explains that a test replaces the changed symbol. PTG008 follows direct call results through local assignments, attributes, and subscripts; it treats existence checks and self-comparisons as insufficient constraints and leaves fixture and dynamic flows unresolved.
+
+Deep mode also generates compatible function-level rollback probes. It keeps the PR tests and restores the base implementation only when the function signature is unchanged and a deterministic direct-call test exists. PTG009 is emitted when the baseline passes and the rollback also passes. Collection, import, and syntax failures are recorded as inconclusive rather than as evidence that tests killed the rollback.
+
 These deeper signals are part of the product's differentiation beyond patch coverage. Mock-boundary analysis stays static and advisory. Targeted probes are bounded, PR-scoped, and opt-in through `--deep` because they rerun repository tests. The goal is not a full mutation-testing campaign; it is a small number of review-focused probes against code changed by the current PR.
 
 ## Optional LLM Claim Candidates
@@ -341,11 +348,11 @@ Patch-coverage tools answer whether changed lines were executed. PR Test Guard k
 - [Rule Fixtures](docs/rule-fixtures.md): how controlled fixtures define expected rule behavior for regression testing.
 - [Validation Strategy](docs/validation-strategy.md): how to validate rule usefulness, false positives, and real-world behavior.
 - [Runner Artifacts](docs/runner-artifacts.md): what the current regression-fixture runner emits.
-- [Roadmap](docs/roadmap.md): the lightweight CLI and GitHub Action path from the current `0.6.0` release.
+- [Roadmap](docs/roadmap.md): the lightweight CLI and GitHub Action path from the current `0.7.0` release.
 
 ## Current Scope
 
-Version `0.6.0` supports direct Python/pytest PR analysis from the current Git repository, strict standalone configuration validation, bounded GitHub annotations, and composable outputs from the reusable advisory GitHub Action. The direct checker currently surfaces:
+Version `0.7.0` supports direct Python/pytest PR analysis from the current Git repository, strict standalone configuration validation, bounded GitHub annotations, and composable outputs from the reusable advisory GitHub Action. The direct checker currently surfaces:
 
 - production-code changes with no test-file change;
 - uncovered changed Python lines when a coverage XML report is supplied;
@@ -356,6 +363,9 @@ Version `0.6.0` supports direct Python/pytest PR analysis from the current Git r
 - additive source-to-test path mappings for indirect related-test relationships;
 - lightweight symbol-resolved mock relationships around changed Python symbols and changed call sites, with constrained dependency mocks suppressed from PTG005 warnings;
 - optional bounded targeted probes that survive an explicit test command.
+- per-function changed-behavior evidence and gaps in deterministic direct-call test relationships;
+- intraprocedural result-to-assertion flow for direct calls to changed symbols;
+- optional compatible base-behavior rollback probes that survive the PR tests;
 - configurable rule policy through `.pr-test-guard.yml`, `--config`, `--no-config`, and `--fail-on`.
 - optional JSON report output through `--json-output` and GitHub artifact upload.
 - dogfooding helpers that draft local review records from JSON reports and summarize sanitized reviewer feedback.

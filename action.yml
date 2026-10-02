@@ -32,15 +32,15 @@ inputs:
     required: false
     default: pr-test-guard-report
   deep:
-    description: Enable bounded targeted probes. Requires test-command.
+    description: Enable bounded mutation and base-behavior rollback probes. Requires test-command.
     required: false
     default: "false"
   test-command:
-    description: Test command used by deep targeted probes, for example pytest -q.
+    description: Test command used by deep probes, for example pytest -q.
     required: false
     default: ""
   max-probes:
-    description: Maximum number of targeted probes in deep mode.
+    description: Maximum number of probes per deep-probe family.
     required: false
     default: "3"
   python-version:

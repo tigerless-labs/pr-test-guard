@@ -9,10 +9,11 @@ import shlex
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from .change_evidence import AssertionFlow, ChangeUnit, build_change_units
 from .finding import Finding
 from .mock_analysis import (
     MockRelation,
@@ -27,6 +28,7 @@ from .mock_analysis.mocks import build_import_table, resolve_dotted_target
 from .mock_analysis.symbols import PythonSymbol
 from .paths import DEFAULT_TEST_PATH_MATCHER, RelatedTestMapping, TestPathMatcher
 from .probes import generate_probes
+from .rollback_probes import generate_rollback_probes
 
 
 class CheckError(RuntimeError):
@@ -57,6 +59,9 @@ class AnalysisResult:
     notes: list[str]
     probe_summary: dict[str, Any]
     related_tests: list["RelatedTestCandidate"]
+    change_units: list[ChangeUnit] = field(default_factory=list)
+    assertion_flows: list[AssertionFlow] = field(default_factory=list)
+    rollback_summary: dict[str, Any] = field(default_factory=dict)
     policy: dict[str, Any] | None = None
     test_paths: TestPathMatcher = DEFAULT_TEST_PATH_MATCHER
 
@@ -73,11 +78,15 @@ class AnalysisResult:
                 "findings": len(self.findings),
                 "notes": len(self.notes),
                 "related_tests": len(self.related_tests),
+                "change_units": len(self.change_units),
             },
             "findings": [item.to_dict() for item in self.findings],
             "notes": self.notes,
             "probes": self.probe_summary,
             "related_tests": [item.to_dict() for item in self.related_tests],
+            "change_units": [item.to_dict() for item in self.change_units],
+            "assertion_flows": [item.to_dict() for item in self.assertion_flows],
+            "rollback_probes": self.rollback_summary,
             "policy": self.policy,
         }
 
@@ -637,6 +646,68 @@ def related_tests_for_location(
     return [item for item in related_tests if item.file == file and item.line <= line <= item.end_line]
 
 
+def change_unit_evidence_findings(change_units: list[ChangeUnit]) -> list[Finding]:
+    """Report changed symbols that have no deterministic exercising test."""
+
+    findings: list[Finding] = []
+    for unit in change_units:
+        # PTG005 already explains direct mock replacement with more specific
+        # evidence, so PTG007 stays focused on otherwise unaccounted gaps.
+        if (
+            unit.directly_exercising_tests
+            or unit.indirectly_exercising_tests
+            or unit.mock_replacement_tests
+        ):
+            continue
+        related = ", ".join(unit.related_tests[:3]) or "none"
+        findings.append(
+            Finding(
+                rule_id="PTG007",
+                severity="warning",
+                file=unit.file,
+                line=unit.line,
+                message=(
+                    "A changed Python behavior has no deterministic direct or static call-path test evidence; "
+                    "review whether this change unit has test evidence."
+                ),
+                evidence=(
+                    f"change_unit={unit.id}; symbol={unit.symbol}; "
+                    f"behavior_kind(s)={', '.join(unit.behavior_kinds)}; "
+                    f"related_candidate(s)={related}; directly_exercising_tests=0; "
+                    "indirectly_exercising_tests=0"
+                ),
+            )
+        )
+    return findings
+
+
+def assertion_flow_findings(flows: list[AssertionFlow]) -> list[Finding]:
+    """Report direct changed-symbol calls whose results do not reach a useful assertion."""
+
+    findings: list[Finding] = []
+    for flow in flows:
+        if flow.constrained or flow.reason == "direct_changed_symbol_mock_reported_by_ptg005":
+            continue
+        assertions = ", ".join(str(line) for line in flow.assertion_lines) or "none"
+        findings.append(
+            Finding(
+                rule_id="PTG008",
+                severity="warning",
+                file=flow.file,
+                line=flow.line,
+                message=(
+                    "A test directly calls changed behavior, but its result does not reach a meaningful assertion."
+                ),
+                evidence=(
+                    f"test={flow.test_name}; symbol={flow.symbol}; "
+                    f"call_line(s)={', '.join(str(line) for line in flow.call_lines)}; "
+                    f"observing_assertion_line(s)={assertions}; reason={flow.reason}"
+                ),
+            )
+        )
+    return findings
+
+
 def mock_relation_evidence(
     *,
     relation: MockRelation,
@@ -901,6 +972,119 @@ def targeted_probe_findings(
     return findings, summary
 
 
+def rollback_probe_findings(
+    repo_root: Path,
+    base: str,
+    change_units: list[ChangeUnit],
+    *,
+    deep: bool,
+    test_command: str | None,
+    max_probes: int,
+    notes: list[str],
+) -> tuple[list[Finding], dict[str, Any]]:
+    """Run compatible base-version functions against the PR's tests."""
+
+    empty_summary = {
+        "enabled": deep,
+        "generated": 0,
+        "applied": 0,
+        "survived": 0,
+        "killed": 0,
+        "inconclusive": 0,
+        "skipped_unconfirmed": 0,
+        "baseline_passed": None,
+    }
+    if not deep:
+        notes.append("PTG009 skipped: base-behavior rollback probes are opt-in (--deep).")
+        return [], empty_summary
+    if not test_command:
+        # PTG006 reports the primary command error; keep this helper total for
+        # direct callers and avoid a second competing exception.
+        return [], empty_summary
+
+    probes, skipped_unconfirmed = generate_rollback_probes(
+        repo_root,
+        base,
+        change_units,
+        max_probes=max_probes,
+    )
+    summary = {
+        **empty_summary,
+        "generated": len(probes),
+        "skipped_unconfirmed": skipped_unconfirmed,
+    }
+    if not probes:
+        notes.append(
+            "PTG009: no compatible function rollback with deterministic direct-test evidence was found."
+        )
+        return [], summary
+
+    findings: list[Finding] = []
+    with tempfile.TemporaryDirectory(prefix="pr-test-guard-rollback-worktree-") as temp_dir:
+        worktree = Path(temp_dir)
+        add_result = run_command(["git", "worktree", "add", "--detach", str(worktree), "HEAD"], repo_root)
+        if add_result.returncode != 0:
+            detail = (add_result.stderr or add_result.stdout).strip()
+            raise CheckError(f"failed to create isolated rollback worktree: {detail}")
+        try:
+            baseline = run_shell(test_command, worktree)
+            summary["baseline_passed"] = baseline.returncode == 0
+            if baseline.returncode != 0:
+                notes.append("PTG009 skipped: the configured test command fails on the unmodified PR checkout.")
+                return [], summary
+
+            for probe in probes:
+                path = worktree / probe["file"]
+                if not path.is_file():
+                    continue
+                original_text = path.read_text(encoding="utf-8")
+                lines = original_text.splitlines(keepends=True)
+                start = int(probe["start_line"]) - 1
+                end = int(probe["end_line"])
+                if "".join(lines[start:end]) != probe["current_source"]:
+                    summary["inconclusive"] += 1
+                    continue
+                replacement = str(probe["base_source"]).splitlines(keepends=True)
+                path.write_text("".join([*lines[:start], *replacement, *lines[end:]]), encoding="utf-8")
+                remove_python_bytecode(path)
+                summary["applied"] += 1
+                result = run_shell(test_command, worktree)
+                path.write_text(original_text, encoding="utf-8")
+                remove_python_bytecode(path)
+                combined_output = f"{result.stdout}\n{result.stderr}".lower()
+                if result.returncode == 0:
+                    summary["survived"] += 1
+                    findings.append(
+                        Finding(
+                            rule_id="PTG009",
+                            severity="warning",
+                            file=probe["file"],
+                            line=int(probe["start_line"]),
+                            message=(
+                                "Restoring the base version of changed behavior still passes the configured tests; "
+                                "the tests may not distinguish the PR behavior from the previous behavior."
+                            ),
+                            evidence=(
+                                f"baseline_passed=true; rollback_id={probe['id']}; "
+                                f"symbol={probe['symbol']}; result=survived; "
+                                f"confirmed_test(s)={', '.join(probe['confirmed_tests'][:5])}"
+                            ),
+                        )
+                    )
+                elif any(
+                    marker in combined_output
+                    for marker in ("error collecting", "collection interrupted", "importerror", "syntaxerror")
+                ):
+                    summary["inconclusive"] += 1
+                else:
+                    summary["killed"] += 1
+        finally:
+            run_command(["git", "worktree", "remove", "--force", str(worktree)], repo_root)
+            run_command(["git", "worktree", "prune"], repo_root)
+
+    return findings, summary
+
+
 def dedupe_findings(findings: list[Finding]) -> list[Finding]:
     seen: set[tuple[str, str | None, int | None, str]] = set()
     unique: list[Finding] = []
@@ -938,8 +1122,19 @@ def analyze_repository(
         test_paths=test_paths,
         mappings=related_test_mappings,
     )
+    test_files = tracked_test_files(repo_root, test_paths)
+    change_units, assertion_flows = build_change_units(
+        repo_root,
+        changed,
+        related_tests,
+        test_files,
+    )
     if changed:
         notes.append(f"Related test context: {related_test_summary(related_tests)}.")
+        notes.append(
+            "Change evidence: "
+            f"change_units={len(change_units)}; assertion_flows={len(assertion_flows)}."
+        )
 
     findings: list[Finding] = []
     findings.extend(missing_test_change_findings(files, related_tests, test_paths))
@@ -947,6 +1142,8 @@ def analyze_repository(
     findings.extend(weak_assertion_findings(repo_root, files, related_tests, test_paths))
     findings.extend(test_weakening_findings(repo_root, files, test_paths))
     findings.extend(mock_boundary_findings(repo_root, changed, files, notes, test_paths))
+    findings.extend(change_unit_evidence_findings(change_units))
+    findings.extend(assertion_flow_findings(assertion_flows))
     probe_findings, probe_summary = targeted_probe_findings(
         repo_root,
         changed,
@@ -957,6 +1154,16 @@ def analyze_repository(
         related_tests=related_tests,
     )
     findings.extend(probe_findings)
+    rollback_findings, rollback_summary = rollback_probe_findings(
+        repo_root,
+        base,
+        change_units,
+        deep=deep,
+        test_command=test_command,
+        max_probes=max_probes,
+        notes=notes,
+    )
+    findings.extend(rollback_findings)
 
     if not files:
         notes.append(f"No changes found between {base} and HEAD.")
@@ -972,6 +1179,9 @@ def analyze_repository(
         notes=notes,
         probe_summary=probe_summary,
         related_tests=related_tests,
+        change_units=change_units,
+        assertion_flows=assertion_flows,
+        rollback_summary=rollback_summary,
         test_paths=test_paths,
     )
 
