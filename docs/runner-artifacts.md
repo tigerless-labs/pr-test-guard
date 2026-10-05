@@ -52,6 +52,12 @@ Records whether the patched fixture tests passed and preserves stdout/stderr nee
 
 Preserve suite-level coverage execution. Coverage is evidence, not a test-quality verdict.
 
+Some v0.8.0 fixtures also carry a controlled `coverage-contexts.json` input to
+define per-test runtime evidence for PTG010. The direct CLI consumes this
+coverage.py JSON format through `--coverage-contexts`; the legacy fixture runner
+continues to generate suite-level XML and does not pretend to synthesize pytest
+contexts.
+
 ### `coverage_map.json`
 
 Maps changed executable lines to coverage evidence where available.
@@ -94,7 +100,7 @@ Human-readable report for the fixture. Findings are review signals and do not ce
 
 ## Stability
 
-Version `0.7.0` remains early. Artifact fields may evolve as the older fixture runner continues to follow the direct PR-facing CLI.
+Version `0.8.0` remains early. Artifact fields may evolve as the older fixture runner continues to follow the direct PR-facing CLI.
 
 Changes should preserve two properties:
 

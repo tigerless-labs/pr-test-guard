@@ -34,6 +34,13 @@ Heuristic rules need nearby examples where they should stay quiet. Prioritize ne
 - missing-test heuristics;
 - test deletion/skip signals;
 - coverage gaps.
+- per-test runtime mismatches, paired with a related test that does execute the changed line;
+
+Context evidence controls should cover parameterized IDs, setup/run/teardown
+phases, relative/absolute/Windows-style paths, malformed contexts, missing test
+contexts, and the case where one of several related tests reaches the change.
+PTG010 must stay quiet whenever the negative claim cannot be established from a
+complete, reliably mapped artifact.
 
 The goal is to reduce noisy warnings before rules are exposed broadly in CI.
 
@@ -82,3 +89,7 @@ For early releases, a rule is ready when:
 4. the output includes actionable evidence;
 5. the rule does not overstate what it knows;
 6. the default behavior is appropriate for advisory CI use.
+
+For PTG010, release validation also includes a real pytest-cov/coverage.py run,
+not only hand-authored JSON, followed by an actual `pr-test-guard check` against
+the resulting context artifact.

@@ -34,6 +34,8 @@ The `claim.json` shape is retained from the original prototype because current r
 - `legitimate_helper_mock_001`: negative control for a dependency mock with an interaction-contract assertion.
 - `unconstrained_helper_mock_001`: positive control for a changed test that mocks an internal helper called from a changed owner line but only checks a weak owner result.
 - `evidence_complete_001`: positive control where the targeted behavior is directly asserted.
+- `related_test_does_not_execute_change`: PTG010 positive control where a deterministic related test runs but misses the changed executable line.
+- `related_test_executes_change`: PTG010 negative control where the related test context overlaps the changed executable line.
 
 ## Positive and Negative Controls
 
@@ -76,6 +78,14 @@ For PTG005, `legitimate_helper_mock_001` and
 ```text
 constrained helper mock with owner behavior evidence -> suppress PTG005
 unconstrained helper mock with weak owner evidence -> emit PTG005
+```
+
+For PTG010, `related_test_does_not_execute_change` and
+`related_test_executes_change` are the paired runtime controls:
+
+```text
+related test observed, changed-line overlap absent -> emit PTG010
+related test observed, changed-line overlap present -> suppress PTG010
 ```
 
 ## Updating Expected Findings
