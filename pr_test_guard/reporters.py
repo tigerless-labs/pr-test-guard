@@ -64,6 +64,48 @@ def render_text(result: AnalysisResult) -> str:
             lines.append(f"- ... {hidden} more related test candidate(s) hidden by related_tests.max_candidates")
         lines.append("")
 
+    dynamic_units = [
+        unit for unit in result.change_units if unit.dynamic_test_evidence is not None
+    ]
+    if dynamic_units:
+        lines.append("Per-Test Dynamic Evidence")
+        lines.append(
+            "Related test candidates are static evidence; observed runtime executors come only from supplied coverage contexts."
+        )
+        for unit in dynamic_units:
+            dynamic = unit.dynamic_test_evidence
+            assert dynamic is not None
+            lines.append(f"- {unit.symbol} ({unit.file})")
+            lines.append(
+                "  Changed executable lines: "
+                + (_line_list(dynamic.changed_executable_lines) or "unresolved")
+            )
+            related = (*unit.directly_exercising_tests, *unit.indirectly_exercising_tests)
+            lines.append(
+                "  Related test candidates: " + (", ".join(related) or "none")
+            )
+            if dynamic.executing_tests:
+                for execution in dynamic.executing_tests:
+                    lines.append(
+                        f"  Observed runtime executor: {execution.test_id} "
+                        f"(phase={execution.phase}; changed lines={_line_list(execution.lines)})"
+                    )
+            else:
+                lines.append("  Observed runtime executors: none")
+            for test_id in dynamic.nonexecuting_related_tests:
+                lines.append(
+                    f"  Related test with no changed-line execution: {test_id}"
+                )
+            lines.append(
+                "  Unexecuted changed lines: "
+                + (_line_list(dynamic.unexecuted_changed_lines) or "none")
+            )
+            if dynamic.status != "observed":
+                lines.append(
+                    f"  Dynamic evidence: inconclusive ({dynamic.reason})"
+                )
+        lines.append("")
+
     if result.notes:
         lines.append("Notes")
         for note in result.notes:
@@ -109,6 +151,10 @@ def github_summary(result: AnalysisResult) -> str:
         f"**{len(result.findings)} review signal(s)** found between `{result.base}` and `HEAD`.",
         f"**{len(result.change_units)} changed behavior unit(s)** identified.",
         f"**{len(result.related_tests)} related test candidate(s)** identified from deterministic or configured path context.",
+        (
+            "**Per-test dynamic evidence:** "
+            f"{result.coverage_contexts_summary.get('status', 'not_provided')}."
+        ),
         f"**Policy:** {_policy_label(result)}.",
         (
             f"**Annotations:** {len(selected_annotations)} emitted, "
@@ -159,6 +205,42 @@ def github_summary(result: AnalysisResult) -> str:
         hidden = len(result.related_tests) - related_limit
         if hidden > 0:
             lines.append(f"| _{hidden} more hidden by `related_tests.max_candidates`_ |  |  |")
+        lines.append("")
+    dynamic_units = [
+        unit for unit in result.change_units if unit.dynamic_test_evidence is not None
+    ]
+    if dynamic_units:
+        lines.append("### Per-Test Dynamic Evidence")
+        lines.append("")
+        lines.append(
+            "Related test candidates are static evidence; observed runtime executors are coverage-context observations."
+        )
+        lines.append("")
+        lines.extend(
+            [
+                "| Changed symbol | Related test candidates | Observed runtime executors | Unexecuted changed lines | Status |",
+                "| --- | --- | --- | --- | --- |",
+            ]
+        )
+        for unit in dynamic_units:
+            dynamic = unit.dynamic_test_evidence
+            assert dynamic is not None
+            related = (*unit.directly_exercising_tests, *unit.indirectly_exercising_tests)
+            executors = [
+                f"{item.test_id} ({item.phase}: {_line_list(item.lines)})"
+                for item in dynamic.executing_tests
+            ]
+            status = dynamic.status
+            if dynamic.reason:
+                status += f": {dynamic.reason}"
+            lines.append(
+                "| "
+                f"`{_markdown_cell(unit.symbol)}` | "
+                f"{_markdown_cell(', '.join(related) or 'none')} | "
+                f"{_markdown_cell(', '.join(executors) or 'none')} | "
+                f"{_markdown_cell(_line_list(dynamic.unexecuted_changed_lines) or 'none')} | "
+                f"{_markdown_cell(status)} |"
+            )
         lines.append("")
     if result.notes:
         lines.append("### Notes")
@@ -289,3 +371,7 @@ def _related_test_limit(result: AnalysisResult) -> int:
 
 def _markdown_cell(value: str) -> str:
     return value.replace("|", "\\|").replace("\n", "<br>")
+
+
+def _line_list(lines: tuple[int, ...]) -> str:
+    return ", ".join(str(line) for line in lines)

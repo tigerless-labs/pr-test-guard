@@ -156,6 +156,7 @@ def test_validate_config_prints_normalized_json(tmp_path: Path, monkeypatch, cap
     assert payload["rules"]["PTG007"] == "warn"
     assert payload["rules"]["PTG008"] == "warn"
     assert payload["rules"]["PTG009"] == "warn"
+    assert payload["rules"]["PTG010"] == "warn"
     assert payload["related_tests"]["max_candidates"] == 2
     assert payload["github"]["annotations"] == {"max_per_rule": 10, "max_total": 50}
     assert payload["source"] == str(tmp_path / "guard.yml")

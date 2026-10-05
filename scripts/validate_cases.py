@@ -35,6 +35,7 @@ ALLOWED_FINDINGS = {
     "Mocked Core Path",
     "CI Scope Weakening",
     "Counterfactual Survivor",
+    "Runtime Test Mismatch",
 }
 
 

@@ -1,0 +1,9 @@
+{
+  "language": "python",
+  "test_framework": "pytest",
+  "fixture_kind": "executable_micro_pr",
+  "case_id": "related_test_does_not_execute_change",
+  "case_family": "Runtime Test Mismatch",
+  "expected_output_source": "controlled_construction",
+  "coverage_context_artifact": "coverage-contexts.json"
+}

@@ -1,0 +1,20 @@
+{
+  "case_id": "related_test_does_not_execute_change",
+  "claims": [
+    {
+      "claim_id": "C1",
+      "adequacy": "unsupported",
+      "findings": [
+        {
+          "type": "Runtime Test Mismatch",
+          "rule_id": "PTG010",
+          "evidence_refs": [
+            "repo/tests/test_pricing.py::test_normal_price",
+            "coverage-contexts.json"
+          ],
+          "rationale": "The related test ran, but its context covers only the normal branch and has no overlap with the changed VIP return line."
+        }
+      ]
+    }
+  ]
+}
