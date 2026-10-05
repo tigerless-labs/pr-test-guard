@@ -64,6 +64,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="optional coverage.py XML report used for changed-line coverage checks",
     )
     check.add_argument(
+        "--coverage-contexts",
+        default=None,
+        help=(
+            "optional coverage.py JSON report generated with --show-contexts; "
+            "adds per-test dynamic evidence"
+        ),
+    )
+    check.add_argument(
         "--config",
         default=None,
         help="optional path to .pr-test-guard.yml, .json, or .toml config",
@@ -183,6 +191,7 @@ def run_check(parsed: argparse.Namespace) -> int:
             Path.cwd(),
             base=base,
             coverage_path=parsed.coverage,
+            coverage_contexts_path=parsed.coverage_contexts,
             deep=parsed.deep,
             test_command=parsed.test_command,
             max_probes=parsed.max_probes,

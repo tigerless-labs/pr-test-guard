@@ -11,6 +11,10 @@ inputs:
     description: Optional path to a coverage.py XML report.
     required: false
     default: ""
+  coverage-contexts:
+    description: Optional path to coverage.py JSON generated with --show-contexts.
+    required: false
+    default: ""
   config:
     description: Optional path to a PR Test Guard config file.
     required: false
@@ -107,6 +111,7 @@ runs:
       shell: bash
       env:
         INPUT_COVERAGE: ${{ inputs.coverage }}
+        INPUT_COVERAGE_CONTEXTS: ${{ inputs.coverage-contexts }}
         INPUT_CONFIG: ${{ inputs.config }}
         INPUT_FAIL_ON: ${{ inputs.fail-on }}
         INPUT_JSON_OUTPUT: ${{ inputs.json-output }}
@@ -120,6 +125,10 @@ runs:
 
         if [[ -n "$INPUT_COVERAGE" ]]; then
           args+=(--coverage "$INPUT_COVERAGE")
+        fi
+
+        if [[ -n "$INPUT_COVERAGE_CONTEXTS" ]]; then
+          args+=(--coverage-contexts "$INPUT_COVERAGE_CONTEXTS")
         fi
 
         if [[ -n "$INPUT_CONFIG" ]]; then

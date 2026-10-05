@@ -1,0 +1,11 @@
+{
+  "claims": [
+    {
+      "id": "C1",
+      "text": "The supplied related test executes the changed VIP pricing behavior.",
+      "trigger": "VIP price changes from 80 to 75",
+      "expected_outcome": "runtime context overlaps the changed return line",
+      "source": "issue.md"
+    }
+  ]
+}

@@ -2,13 +2,14 @@
 
 PR Test Guard is a lightweight PR test-quality tool: run fast checks on a pull-request diff, explain what triggered, and fit naturally into local CLI and CI workflows.
 
-Version `0.7.0` adds changed-function evidence, bounded assertion-result flow, and compatible base-behavior rollback probes to the Python/pytest path.
+Version `0.8.0` adds opt-in per-test dynamic coverage evidence and PTG010 to the Python/pytest path.
 
-## What Exists in 0.7.0
+## What Exists in 0.8.0
 
 - `pr-test-guard` / `python -m pr_test_guard` entrypoints;
 - `pr-test-guard check --base <base-ref>` for repository-native PR analysis;
 - optional `coverage.py` XML input for changed-line coverage signals;
+- optional context-aware coverage.py JSON input that maps changed executable lines to exact pytest test IDs and phases;
 - obvious weak-assertion and test-weakening checks;
 - deterministic related-test context for changed Python symbols;
 - explicit Python mock-boundary candidates on changed symbols and unconstrained changed dependency mocks;
@@ -16,6 +17,7 @@ Version `0.7.0` adds changed-function evidence, bounded assertion-result flow, a
 - one evidence unit per changed Python function or method;
 - local result-to-assertion flow for direct changed-symbol calls;
 - opt-in compatible function rollback probes in an isolated Git worktree;
+- PTG010 when all observed deterministic related tests miss the changed executable lines;
 - dogfood-derived sanitized review examples and public-safe distilled PTG005 controls;
 - text, JSON, and GitHub Actions output;
 - `.pr-test-guard.*` configuration for rule `off` / `warn` / `error`, ignored paths, related-test display limits, and one-off `--fail-on` CI policy;
@@ -81,6 +83,20 @@ The context is intentionally conservative: same-name symbols from different
 modules stay unrelated, dynamic calls are not guessed, and business-intent
 mapping remains out of scope for the default path. Configured path relationships
 are treated as review context, not proof of execution or test sufficiency.
+
+## Current: Per-Test Dynamic Evidence
+
+`--coverage-contexts` accepts coverage.py JSON generated with
+`--show-contexts` after pytest-cov uses `--cov-context=test`. The normalized
+model preserves parameterized pytest IDs and setup/run/teardown phases, then
+attaches observed executors and executed/unexecuted changed lines to each
+changed function or method.
+
+This layer is explicitly opt-in and does not add runtime instrumentation.
+PTG010 stays inconclusive when a path cannot be mapped reliably, a related test
+does not appear in the contexts, an unknown context format is present, or the
+artifact does not declare context output. Dynamic reachability remains distinct
+from assertion adequacy and rollback sensitivity.
 
 ## Product Principles
 
@@ -164,7 +180,7 @@ post-detection finding filter.
 
 ## Current: GitHub Adoption Controls
 
-Version `0.7.0` retains stable annotation grouping, deterministic error-first
+Version `0.8.0` retains stable annotation grouping, deterministic error-first
 limits, and Action outputs. After dogfooding stabilizes the signals, consider:
 
 - per-rule thresholds for high-volume findings;
@@ -173,7 +189,9 @@ limits, and Action outputs. After dogfooding stabilizes the signals, consider:
 
 After the GitHub/Python path is stable, consider:
 
-- per-test coverage mapping;
+- branch-level per-test execution evidence;
+- stronger joins between dynamic execution and assertion evidence;
+- safe targeted test selection from observed/static evidence;
 - JavaScript/TypeScript test patterns;
 - additional coverage formats;
 - GitLab or other CI wrappers;

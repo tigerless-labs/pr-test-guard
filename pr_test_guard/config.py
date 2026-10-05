@@ -25,6 +25,7 @@ RULE_IDS = (
     "PTG007",
     "PTG008",
     "PTG009",
+    "PTG010",
 )
 RULE_ACTIONS = ("off", "warn", "error")
 DEFAULT_CONFIG_NAMES = (

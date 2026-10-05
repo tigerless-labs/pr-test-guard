@@ -15,6 +15,7 @@ For a changed behavior, PR Test Guard may inspect:
 - assertion shapes;
 - deterministic related-test candidates from imports, direct calls, test names, and mock targets;
 - changed-line coverage when available;
+- per-test line contexts when explicitly supplied;
 - explicit mock or patch boundaries;
 - CI/test-run evidence;
 - optional change-intent text from an issue, PR body, task, or structured fixture.
@@ -56,6 +57,19 @@ These are review signals, not proof that testing is missing. Existing tests may 
 Changed-line coverage answers whether changed executable code ran. It is valuable, but it should remain one input rather than the final verdict.
 
 A covered branch can still be backed by a weak assertion. A passing test can still exercise the wrong behavior.
+
+Context-aware coverage adds a separate dynamic layer. PR Test Guard reads JSON
+produced by `coverage json --show-contexts` after a pytest/pytest-cov run with
+test contexts enabled. It maps executable changed lines to exact pytest IDs and
+preserves `setup`, `run`, and `teardown` phases. Parameterized IDs are retained
+as distinct runtime contexts and may also be grouped under their canonical test
+node for comparison with static evidence.
+
+The tool does not install a runtime tracer or modify the target test framework.
+Absent input leaves the existing rules unchanged. Unknown context formats,
+ambiguous paths, missing related-test contexts, and incomplete artifacts are
+recorded as unresolved or inconclusive rather than treated as proof that a test
+missed a change.
 
 ### Assertion evidence
 
@@ -101,6 +115,18 @@ functions, imported functions, and `self`/`cls` methods so internal helpers can
 inherit evidence from a tested public entrypoint. Dynamic dispatch is not
 guessed.
 
+Each change unit keeps evidence layers separate:
+
+```text
+candidate -> static -> dynamic -> constraint -> counterfactual
+```
+
+A related candidate is not an observed executor. Static direct/call-path
+evidence is not dynamic execution. Dynamic execution does not establish an
+assertion constraint, and an assertion-shaped constraint does not establish
+counterfactual sensitivity. Reports expose the labels and underlying test IDs
+without assigning a 0–100 confidence score.
+
 Assertion flow is deliberately intraprocedural. It follows a direct changed
 symbol call through local assignments, attributes, and subscripts. It recognizes
 comparisons and negated conditions, while treating existence checks,
@@ -121,7 +147,7 @@ failures are inconclusive; an ordinary failing test kills the rollback.
 
 ## Finding Model
 
-The direct checker uses nine stable rule ids for the current Python/pytest scope:
+The direct checker uses ten stable rule ids for the current Python/pytest scope:
 
 - `PTG001` — production code changed with no test-file change;
 - `PTG002` — changed Python line uncovered in a supplied coverage XML;
@@ -132,6 +158,16 @@ The direct checker uses nine stable rule ids for the current Python/pytest scope
 - `PTG007` — changed function or method has no deterministic direct or static call-path test evidence;
 - `PTG008` — direct changed-symbol result does not reach a meaningful assertion;
 - `PTG009` — compatible base-version function still passes the PR tests.
+- `PTG010` — all observed deterministic related tests miss every changed executable line in the changed symbol.
+
+PTG010 is advisory by default and intentionally requires all of the following:
+an explicitly supplied valid context artifact, mapped executable changed lines,
+deterministic direct/static related-test evidence, parseable runtime contexts
+for every such related test, and zero changed-line overlap. Without those
+preconditions the result is inconclusive. This produces a progressive evidence
+story: PTG007 has no credible relationship; PTG010 has a relationship but no
+runtime overlap; PTG008 has execution but no meaningful constraint; PTG009 has
+an apparent constraint but does not distinguish the prior behavior.
 
 Each result includes a rule id, severity, file/line where available, a short message, and evidence text. Severity defaults to `warning`; `.pr-test-guard.yml` or `--fail-on` can promote selected rules to `error` or suppress them with `off`. The direct checker also emits related-test candidates as JSON context and a short text/GitHub summary. The older fixture runner retains its research-prototype labels only so existing regression fixtures remain stable during the transition.
 
@@ -151,6 +187,6 @@ CI integration should be advisory by default. Repositories can opt into stricter
 
 ## Current Limits
 
-Version `0.7.0` provides a repository-native `check` command, strict standalone configuration validation, bounded and stably grouped GitHub annotations, reusable Action outputs, configurable test-path recognition and rule policy, JSON report artifacts, dogfooding review-draft helpers, deterministic related-test context, additive source-to-test path mappings, changed-function evidence, bounded assertion-result flow, AST-scoped targeted probes, function rollback probes, and PTG005 constrained dependency-mock suppression for the current Python/pytest scope. Annotation limits affect only delivery noise: the job summary and JSON report retain the complete policy-filtered result. The checker is intentionally conservative: it does not infer full PR correctness, automatically discover every project's test command, or treat heuristic signals as merge-blocking failures unless the repository explicitly configures that policy.
+Version `0.8.0` provides a repository-native `check` command, strict standalone configuration validation, bounded and stably grouped GitHub annotations, reusable Action outputs, configurable test-path recognition and rule policy, JSON report artifacts, dogfooding review-draft helpers, deterministic related-test context, additive source-to-test path mappings, changed-function evidence, opt-in per-test dynamic coverage evidence, bounded assertion-result flow, AST-scoped targeted probes, function rollback probes, and PTG005 constrained dependency-mock suppression for the current Python/pytest scope. Annotation limits affect only delivery noise: the job summary and JSON report retain the complete policy-filtered result. The checker is intentionally conservative: it does not infer full PR correctness, automatically discover every project's test command, instrument repositories automatically, or treat heuristic signals as merge-blocking failures unless the repository explicitly configures that policy.
 
 The immediate engineering goal is real-PR dogfooding and false-positive reduction. Controlled fixtures remain regression tests for the tool rather than a public benchmark.

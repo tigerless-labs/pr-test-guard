@@ -1,0 +1,15 @@
+{
+  "meta": {"format": 3, "version": "7.10.0", "show_contexts": true},
+  "files": {
+    "pricing.py": {
+      "executed_lines": [1, 2, 4],
+      "missing_lines": [3],
+      "excluded_lines": [],
+      "contexts": {
+        "1": [""],
+        "2": ["tests/test_pricing.py::test_normal_price|run"],
+        "4": ["tests/test_pricing.py::test_normal_price|run"]
+      }
+    }
+  }
+}

@@ -9,7 +9,7 @@ import shlex
 import subprocess
 import tempfile
 import xml.etree.ElementTree as ET
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +27,11 @@ from .mock_analysis import (
 from .mock_analysis.mocks import build_import_table, resolve_dotted_target
 from .mock_analysis.symbols import PythonSymbol
 from .paths import DEFAULT_TEST_PATH_MATCHER, RelatedTestMapping, TestPathMatcher
+from .per_test_coverage import (
+    CoverageContextError,
+    canonical_test_id,
+    parse_coverage_contexts,
+)
 from .probes import generate_probes
 from .rollback_probes import generate_rollback_probes
 
@@ -62,6 +67,7 @@ class AnalysisResult:
     change_units: list[ChangeUnit] = field(default_factory=list)
     assertion_flows: list[AssertionFlow] = field(default_factory=list)
     rollback_summary: dict[str, Any] = field(default_factory=dict)
+    coverage_contexts_summary: dict[str, Any] = field(default_factory=dict)
     policy: dict[str, Any] | None = None
     test_paths: TestPathMatcher = DEFAULT_TEST_PATH_MATCHER
 
@@ -87,6 +93,7 @@ class AnalysisResult:
             "change_units": [item.to_dict() for item in self.change_units],
             "assertion_flows": [item.to_dict() for item in self.assertion_flows],
             "rollback_probes": self.rollback_summary,
+            "coverage_contexts": self.coverage_contexts_summary,
             "policy": self.policy,
         }
 
@@ -681,13 +688,70 @@ def change_unit_evidence_findings(change_units: list[ChangeUnit]) -> list[Findin
     return findings
 
 
-def assertion_flow_findings(flows: list[AssertionFlow]) -> list[Finding]:
+def dynamic_execution_findings(change_units: list[ChangeUnit]) -> list[Finding]:
+    """Report deterministic related tests that miss changed executable lines."""
+
+    findings: list[Finding] = []
+    for unit in change_units:
+        static_tests = tuple(
+            dict.fromkeys(
+                (*unit.directly_exercising_tests, *unit.indirectly_exercising_tests)
+            )
+        )
+        dynamic = unit.dynamic_test_evidence
+        if not static_tests or dynamic is None or dynamic.status != "observed":
+            continue
+        related_canonical = {canonical_test_id(test_id) for test_id in static_tests}
+        if any(
+            item.canonical_test_id in related_canonical
+            for item in dynamic.executing_tests
+        ):
+            continue
+        lines = ", ".join(str(line) for line in dynamic.changed_executable_lines)
+        tests = ", ".join(dynamic.nonexecuting_related_tests[:5])
+        findings.append(
+            Finding(
+                rule_id="PTG010",
+                severity="warning",
+                file=unit.file,
+                line=min(dynamic.changed_executable_lines),
+                message=(
+                    "Related tests do not execute changed behavior; supplied per-test coverage "
+                    "contexts show no related test reaching a changed executable line."
+                ),
+                evidence=(
+                    f"change_unit={unit.id}; symbol={unit.symbol}; "
+                    f"changed_executable_line(s)={lines}; "
+                    f"related_runtime_test(s)={tests}; overlap=none"
+                ),
+            )
+        )
+    return findings
+
+
+def assertion_flow_findings(
+    flows: list[AssertionFlow],
+    change_units: list[ChangeUnit] | None = None,
+) -> list[Finding]:
     """Report direct changed-symbol calls whose results do not reach a useful assertion."""
 
+    units_by_symbol = {unit.symbol: unit for unit in change_units or []}
     findings: list[Finding] = []
     for flow in flows:
         if flow.constrained or flow.reason == "direct_changed_symbol_mock_reported_by_ptg005":
             continue
+        unit = units_by_symbol.get(flow.symbol)
+        dynamic = unit.dynamic_test_evidence if unit else None
+        if dynamic is not None and dynamic.status == "observed":
+            runtime_variants = {
+                item.test_id
+                for item in dynamic.executing_tests
+                if item.canonical_test_id == canonical_test_id(flow.test_ref)
+            }
+            if not runtime_variants:
+                # PTG010 is the deeper, runtime-backed explanation for this
+                # source-level relationship. Avoid emitting a competing PTG008.
+                continue
         assertions = ", ".join(str(line) for line in flow.assertion_lines) or "none"
         findings.append(
             Finding(
@@ -1102,6 +1166,7 @@ def analyze_repository(
     *,
     base: str,
     coverage_path: str | None = None,
+    coverage_contexts_path: str | None = None,
     deep: bool = False,
     test_command: str | None = None,
     max_probes: int = 3,
@@ -1129,6 +1194,64 @@ def analyze_repository(
         related_tests,
         test_files,
     )
+    coverage_contexts_summary: dict[str, Any] = {
+        "provided": bool(coverage_contexts_path),
+        "status": "not_provided",
+        "files": 0,
+        "test_executions": 0,
+        "unresolved_contexts": [],
+        "issues": [],
+    }
+    if coverage_contexts_path:
+        contexts_path = Path(coverage_contexts_path)
+        if not contexts_path.is_absolute():
+            contexts_path = repo_root / contexts_path
+        try:
+            context_report = parse_coverage_contexts(contexts_path)
+        except CoverageContextError as exc:
+            raise CheckError(str(exc)) from exc
+        enriched_units: list[ChangeUnit] = []
+        for unit in change_units:
+            deterministic_tests = tuple(
+                dict.fromkeys(
+                    (*unit.directly_exercising_tests, *unit.indirectly_exercising_tests)
+                )
+            )
+            dynamic = context_report.evidence_for(
+                repo_file=unit.file,
+                changed_lines=unit.changed_lines,
+                related_test_ids=deterministic_tests,
+            )
+            enriched_units.append(replace(unit, dynamic_test_evidence=dynamic))
+            if dynamic.status == "inconclusive":
+                notes.append(
+                    f"PTG010 inconclusive for {unit.symbol}: {dynamic.reason}."
+                )
+        change_units = enriched_units
+        artifact_status = (
+            "inconclusive"
+            if context_report.issues or context_report.unresolved_contexts
+            else "valid"
+        )
+        coverage_contexts_summary = {
+            "provided": True,
+            "status": artifact_status,
+            "files": len(context_report.files),
+            "test_executions": len(
+                {item.test_id for item in context_report.executions}
+            ),
+            "unresolved_contexts": list(context_report.unresolved_contexts),
+            "issues": list(context_report.issues),
+        }
+        if context_report.unresolved_contexts:
+            notes.append(
+                "Coverage contexts contain unresolved non-pytest context value(s); "
+                "PTG010 remains inconclusive."
+            )
+        if context_report.issues:
+            notes.append(
+                "Coverage contexts artifact is incomplete or invalid; PTG010 remains inconclusive."
+            )
     if changed:
         notes.append(f"Related test context: {related_test_summary(related_tests)}.")
         notes.append(
@@ -1143,7 +1266,8 @@ def analyze_repository(
     findings.extend(test_weakening_findings(repo_root, files, test_paths))
     findings.extend(mock_boundary_findings(repo_root, changed, files, notes, test_paths))
     findings.extend(change_unit_evidence_findings(change_units))
-    findings.extend(assertion_flow_findings(assertion_flows))
+    findings.extend(dynamic_execution_findings(change_units))
+    findings.extend(assertion_flow_findings(assertion_flows, change_units))
     probe_findings, probe_summary = targeted_probe_findings(
         repo_root,
         changed,
@@ -1164,6 +1288,23 @@ def analyze_repository(
         notes=notes,
     )
     findings.extend(rollback_findings)
+    rollback_survivors = {
+        match.group(1)
+        for finding in rollback_findings
+        if finding.evidence
+        for match in [re.search(r"(?:^|; )symbol=([^;]+)", finding.evidence)]
+        if match
+    }
+    if rollback_survivors:
+        change_units = [
+            replace(
+                unit,
+                counterfactual_evidence=("base_behavior_rollback_survived",),
+            )
+            if unit.symbol in rollback_survivors
+            else unit
+            for unit in change_units
+        ]
 
     if not files:
         notes.append(f"No changes found between {base} and HEAD.")
@@ -1182,6 +1323,7 @@ def analyze_repository(
         change_units=change_units,
         assertion_flows=assertion_flows,
         rollback_summary=rollback_summary,
+        coverage_contexts_summary=coverage_contexts_summary,
         test_paths=test_paths,
     )
 

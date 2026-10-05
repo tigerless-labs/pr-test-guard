@@ -1,0 +1,20 @@
+{
+  "case_id": "related_test_executes_change",
+  "claims": [
+    {
+      "claim_id": "C1",
+      "adequacy": "supported",
+      "findings": [
+        {
+          "type": "Evidence Complete",
+          "rule_id": "PTG010-not-emitted",
+          "evidence_refs": [
+            "repo/tests/test_pricing.py::test_vip_price",
+            "coverage-contexts.json"
+          ],
+          "rationale": "The related test runtime context includes the changed VIP return line."
+        }
+      ]
+    }
+  ]
+}

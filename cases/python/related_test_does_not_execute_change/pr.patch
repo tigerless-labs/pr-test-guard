@@ -1,0 +1,9 @@
+diff --git a/pricing.py b/pricing.py
+--- a/pricing.py
++++ b/pricing.py
+@@ -1,4 +1,4 @@
+ def calculate(kind):
+     if kind == "vip":
+-        return 80
++        return 75
+     return 100

@@ -10,6 +10,7 @@ from typing import Any
 from .mock_analysis.matching import match_mock_target
 from .mock_analysis.mocks import build_import_table, extract_mock_targets, resolve_dotted_target
 from .mock_analysis.symbols import PythonSymbol, collect_changed_symbols, module_name_from_path
+from .per_test_coverage import DynamicTestEvidence
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,8 +29,15 @@ class ChangeUnit:
     mock_replacement_tests: tuple[str, ...]
     constrained_tests: tuple[str, ...]
     unconstrained_tests: tuple[str, ...]
+    dynamic_test_evidence: DynamicTestEvidence | None = None
+    counterfactual_evidence: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
+        dynamic_tests = (
+            tuple(item.test_id for item in self.dynamic_test_evidence.executing_tests)
+            if self.dynamic_test_evidence
+            else ()
+        )
         return {
             "id": self.id,
             "file": self.file,
@@ -43,6 +51,20 @@ class ChangeUnit:
             "mock_replacement_tests": list(self.mock_replacement_tests),
             "constrained_tests": list(self.constrained_tests),
             "unconstrained_tests": list(self.unconstrained_tests),
+            "dynamic_test_evidence": (
+                self.dynamic_test_evidence.to_dict() if self.dynamic_test_evidence else None
+            ),
+            "evidence_labels": {
+                "candidate": list(self.related_tests),
+                "static": list(
+                    dict.fromkeys(
+                        (*self.directly_exercising_tests, *self.indirectly_exercising_tests)
+                    )
+                ),
+                "dynamic": list(dict.fromkeys(dynamic_tests)),
+                "constraint": list(self.constrained_tests),
+                "counterfactual": list(self.counterfactual_evidence),
+            },
         }
 
 

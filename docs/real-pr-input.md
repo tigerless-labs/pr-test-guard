@@ -137,6 +137,7 @@ The current Python/pytest path uses:
 - related-test candidates from deterministic imports, direct calls, test names, mock targets, and optional configured path mappings;
 - tracked Python tests for symbol-resolved mock targets and bounded changed-call relationships;
 - optional `coverage.py` XML;
+- optional context-aware coverage.py JSON for per-test changed-line execution evidence;
 - optional explicit test command for bounded mutation and base-behavior rollback probes.
 - optional `.pr-test-guard.*` test-path, related-test mapping, and policy configuration.
 - optional JSON report output path for CI artifacts or follow-up analysis.
@@ -156,7 +157,7 @@ The root `action.yml` wraps the same CLI/core. A consumer repository checks out 
   with:
     fetch-depth: 0
 
-- uses: tigerless-labs/pr-test-guard@v0.7.0
+- uses: tigerless-labs/pr-test-guard@v0.8.0
   id: guard
   with:
     base: origin/${{ github.base_ref }}
@@ -167,10 +168,25 @@ a complete job summary. Workflow-command properties such as file paths are
 escaped independently from annotation messages. Findings are advisory by
 default and do not make the Action fail.
 
+When the workflow has already generated context-aware coverage, pass it
+separately from the ordinary XML report:
+
+```yaml
+- uses: tigerless-labs/pr-test-guard@v0.8.0
+  with:
+    base: origin/${{ github.base_ref }}
+    coverage: coverage.xml
+    coverage-contexts: coverage-contexts.json
+```
+
+The Action does not run or instrument the repository's tests. A missing context
+input leaves PTG001–PTG009 unchanged; incomplete or unparseable context evidence
+cannot produce PTG010.
+
 To use repository policy:
 
 ```yaml
-- uses: tigerless-labs/pr-test-guard@v0.7.0
+- uses: tigerless-labs/pr-test-guard@v0.8.0
   with:
     base: origin/${{ github.base_ref }}
     config: .pr-test-guard.yml
@@ -179,7 +195,7 @@ To use repository policy:
 To enforce a high-confidence rule without a config file:
 
 ```yaml
-- uses: tigerless-labs/pr-test-guard@v0.7.0
+- uses: tigerless-labs/pr-test-guard@v0.8.0
   with:
     base: origin/${{ github.base_ref }}
     fail-on: PTG006
@@ -190,7 +206,7 @@ Rules configured as `error` emit GitHub error annotations and make the Action fa
 The Action also supports JSON report artifacts:
 
 ```yaml
-- uses: tigerless-labs/pr-test-guard@v0.7.0
+- uses: tigerless-labs/pr-test-guard@v0.8.0
   with:
     base: origin/${{ github.base_ref }}
     json-output: pr-test-guard-report.json
