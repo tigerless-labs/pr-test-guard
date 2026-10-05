@@ -4,4 +4,4 @@ import pr_test_guard
 
 
 def test_package_version_is_current() -> None:
-    assert pr_test_guard.__version__ == "0.7.0"
+    assert pr_test_guard.__version__ == "0.8.0"
